@@ -181,6 +181,39 @@ class XiuxianPlugin(Star):
         """检查插件是否已初始化"""
         return self.player_mgr is not None
 
+    def _get_message_text(self, event: AstrMessageEvent) -> str:
+        """
+        兼容性方法：获取消息文本
+        尝试多种方式获取消息文本以兼容不同版本的AstrBot
+        """
+        # 方法1: get_plain_text() - 新版API
+        if hasattr(event, 'get_plain_text'):
+            return event.get_plain_text().strip()
+
+        # 方法2: message_str - 字符串属性
+        if hasattr(event, 'message_str'):
+            return event.message_str.strip()
+
+        # 方法3: unified_msg_origin - 统一消息来源
+        if hasattr(event, 'unified_msg_origin'):
+            return event.unified_msg_origin.strip()
+
+        # 方法4: raw_message - 原始消息（aiocqhttp）
+        if hasattr(event, 'raw_message'):
+            return event.raw_message.strip()
+
+        # 方法5: message - 消息对象
+        if hasattr(event, 'message'):
+            msg = event.message
+            # 如果是字符串，直接返回
+            if isinstance(msg, str):
+                return msg.strip()
+            # 如果是列表或其他对象，尝试转换
+            return str(msg).strip()
+
+        # 如果都不行，抛出错误
+        raise AttributeError(f"无法从事件对象获取消息文本。事件类型: {type(event).__name__}")
+
     # ========== 命令处理器 ==========
 
     @filter.command("修仙初始化", alias={"xiuxian_init", "初始化"})
@@ -214,7 +247,7 @@ class XiuxianPlugin(Star):
                 return
 
             # 2. 获取道号（从命令参数）
-            message_text = event.get_plain_text().strip()
+            message_text = self._get_message_text(event)
             parts = message_text.split(maxsplit=1)
 
             if len(parts) < 2:
@@ -445,7 +478,7 @@ class XiuxianPlugin(Star):
                     info_lines.append(f"   {factor_desc[factor_name]}：{factor_value}")
 
             # 检查是否有确认参数
-            message_text = event.get_plain_text().strip()
+            message_text = self._get_message_text(event)
             parts = message_text.split()
 
             if len(parts) < 2 or parts[1] not in ['确认', '是', 'y', 'yes']:
@@ -521,7 +554,7 @@ class XiuxianPlugin(Star):
             attacker = await self.player_mgr.get_player_or_error(attacker_id)
 
             # 2. 提取被@的用户
-            message_text = event.get_plain_text()
+            message_text = self._get_message_text(event)
 
             # 尝试从消息中提取@用户
             import re
@@ -625,7 +658,7 @@ class XiuxianPlugin(Star):
     async def equip_cmd(self, event: AstrMessageEvent):
         """穿戴装备"""
         user_id = event.get_sender_id()
-        message_text = event.get_plain_text().strip()
+        message_text = self._get_message_text(event)
 
         try:
             # 检查插件是否已初始化
@@ -687,7 +720,7 @@ class XiuxianPlugin(Star):
     async def unequip_cmd(self, event: AstrMessageEvent):
         """卸下装备"""
         user_id = event.get_sender_id()
-        message_text = event.get_plain_text().strip()
+        message_text = self._get_message_text(event)
 
         try:
             # 检查插件是否已初始化
@@ -754,7 +787,7 @@ class XiuxianPlugin(Star):
                 return
 
             # 提取装备类型
-            message_text = event.get_plain_text().strip()
+            message_text = self._get_message_text(event)
             parts = message_text.split()
 
             equipment_type = 'weapon'  # 默认武器
@@ -793,7 +826,7 @@ class XiuxianPlugin(Star):
     async def ai_generate_cmd(self, event: AstrMessageEvent):
         """AI内容生成"""
         user_id = event.get_sender_id()
-        message_text = event.get_plain_text().strip()
+        message_text = self._get_message_text(event)
 
         try:
             # 检查插件是否已初始化
@@ -1000,7 +1033,7 @@ class XiuxianPlugin(Star):
     async def method_equip_cmd(self, event: AstrMessageEvent):
         """装备功法"""
         user_id = event.get_sender_id()
-        message_text = event.get_plain_text().strip()
+        message_text = self._get_message_text(event)
 
         try:
             # 检查插件是否已初始化
@@ -1060,7 +1093,7 @@ class XiuxianPlugin(Star):
     async def method_unequip_cmd(self, event: AstrMessageEvent):
         """卸下功法"""
         user_id = event.get_sender_id()
-        message_text = event.get_plain_text().strip()
+        message_text = self._get_message_text(event)
 
         try:
             # 检查插件是否已初始化
@@ -1099,7 +1132,7 @@ class XiuxianPlugin(Star):
     async def method_info_cmd(self, event: AstrMessageEvent):
         """查看功法详情"""
         user_id = event.get_sender_id()
-        message_text = event.get_plain_text().strip()
+        message_text = self._get_message_text(event)
 
         try:
             # 检查插件是否已初始化
@@ -1147,7 +1180,7 @@ class XiuxianPlugin(Star):
     async def get_method_cmd(self, event: AstrMessageEvent):
         """获得随机功法（测试用）"""
         user_id = event.get_sender_id()
-        message_text = event.get_plain_text().strip()
+        message_text = self._get_message_text(event)
 
         try:
             # 检查插件是否已初始化
@@ -1247,7 +1280,7 @@ class XiuxianPlugin(Star):
                 return
 
             # 获取宗门名称和描述（从命令参数）
-            message_text = event.get_plain_text().strip()
+            message_text = self._get_message_text(event)
             parts = message_text.split(maxsplit=2)
 
             if len(parts) < 3:
@@ -1347,7 +1380,7 @@ class XiuxianPlugin(Star):
     async def join_sect_cmd(self, event: AstrMessageEvent):
         """加入宗门"""
         user_id = event.get_sender_id()
-        message_text = event.get_plain_text().strip()
+        message_text = self._get_message_text(event)
 
         try:
             # 检查插件是否已初始化
@@ -1404,7 +1437,7 @@ class XiuxianPlugin(Star):
                 return
 
             # 检查是否有确认参数
-            message_text = event.get_plain_text().strip()
+            message_text = self._get_message_text(event)
             parts = message_text.split()
 
             if len(parts) < 2 or parts[1] not in ['确认', '是', 'y', 'yes']:
@@ -1472,7 +1505,7 @@ class XiuxianPlugin(Star):
     async def sect_donate_cmd(self, event: AstrMessageEvent):
         """捐献灵石"""
         user_id = event.get_sender_id()
-        message_text = event.get_plain_text().strip()
+        message_text = self._get_message_text(event)
 
         try:
             # 检查插件是否已初始化
@@ -1945,7 +1978,7 @@ AI命令:
                 return
 
             # 获取职业类型参数
-            text = event.get_plain_text().strip()
+            text = self._get_message_text(event)
             args = text.split()
 
             # 职业类型映射
@@ -2047,7 +2080,7 @@ AI命令:
             if not self._check_initialized():
                 yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
                 return
-            text = event.get_plain_text().strip()
+            text = self._get_message_text(event)
             args = text.split()
             if len(args) < 2:
                 yield event.plain_result(
@@ -2112,7 +2145,7 @@ AI命令:
             if not self._check_initialized():
                 yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
                 return
-            text = event.get_plain_text().strip()
+            text = self._get_message_text(event)
             args = text.split()
             if len(args) < 2:
                 yield event.plain_result(
@@ -2180,7 +2213,7 @@ AI命令:
             if not self._check_initialized():
                 yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
                 return
-            text = event.get_plain_text().strip()
+            text = self._get_message_text(event)
             args = text.split()
             if len(args) < 2:
                 yield event.plain_result(
@@ -2253,7 +2286,7 @@ AI命令:
             if not self._check_initialized():
                 yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
                 return
-            text = event.get_plain_text().strip()
+            text = self._get_message_text(event)
             args = text.split()
             if len(args) < 2:
                 yield event.plain_result(
