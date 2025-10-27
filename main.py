@@ -213,31 +213,27 @@ class XiuxianPlugin(Star):
                 yield event.plain_result("道友已经踏上修仙之路，无需重复创建角色。\n使用 /属性 查看角色信息")
                 return
 
-            # 2. 提示输入道号
-            yield event.plain_result(
-                "欢迎来到修仙世界！\n\n"
-                "请输入您的道号（角色名称）："
-            )
+            # 2. 获取道号（从命令参数）
+            message_text = event.get_plain_text().strip()
+            parts = message_text.split(maxsplit=1)
 
-            # 3. 等待用户输入道号
-            name_event = await self.context.session_waiter.wait(
-                event,
-                timeout=60  # 60秒超时
-            )
-
-            if name_event is None:
-                yield event.plain_result("创建角色超时，请重新使用 /修仙 命令")
+            if len(parts) < 2:
+                yield event.plain_result(
+                    "欢迎来到修仙世界！\n\n"
+                    "请输入您的道号（角色名称）\n\n"
+                    "💡 使用方法：/修仙 [道号]\n"
+                    "💡 例如：/修仙 逍遥子"
+                )
                 return
 
-            # 获取道号
-            name = name_event.get_plain_text().strip()
+            name = parts[1].strip()
 
             # 验证道号
             if not name or len(name) > 20:
-                yield event.plain_result("道号不合法！请使用1-20个字符的道号，重新使用 /修仙 命令创建")
+                yield event.plain_result("道号不合法！请使用1-20个字符的道号\n\n💡 例如：/修仙 逍遥子")
                 return
 
-            # 4. 创建角色
+            # 3. 创建角色
             yield event.plain_result(f"正在为道友 {name} 检测灵根...")
 
             player = await self.player_mgr.create_player(user_id, name)
@@ -448,27 +444,18 @@ class XiuxianPlugin(Star):
                 if factor_name in factor_desc:
                     info_lines.append(f"   {factor_desc[factor_name]}：{factor_value}")
 
-            info_lines.extend([
-                "",
-                "⚠️ 突破失败将损失20%当前修为",
-                "是否确认突破？请回复 '确认' 或 '取消'"
-            ])
+            # 检查是否有确认参数
+            message_text = event.get_plain_text().strip()
+            parts = message_text.split()
 
-            yield event.plain_result("\n".join(info_lines))
-
-            # 等待用户确认
-            confirm_event = await self.context.session_waiter.wait(
-                event,
-                timeout=30  # 30秒超时
-            )
-
-            if confirm_event is None:
-                yield event.plain_result("⏰ 突破确认超时，操作已取消")
-                return
-
-            confirm_text = confirm_event.get_plain_text().strip().lower()
-            if confirm_text not in ['确认', '是', 'y', 'yes']:
-                yield event.plain_result("❌ 突破操作已取消")
+            if len(parts) < 2 or parts[1] not in ['确认', '是', 'y', 'yes']:
+                info_lines.extend([
+                    "",
+                    "⚠️ 突破失败将损失20%当前修为",
+                    "",
+                    "💡 使用 /突破 确认 执行突破"
+                ])
+                yield event.plain_result("\n".join(info_lines))
                 return
 
             # 执行突破
@@ -1259,32 +1246,31 @@ class XiuxianPlugin(Star):
                 yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
                 return
 
-            # 提示输入宗门名称
-            yield event.plain_result(
-                "🏛️ 创建宗门\n\n"
-                "请输入宗门名称（1-20个字符）："
-            )
+            # 获取宗门名称和描述（从命令参数）
+            message_text = event.get_plain_text().strip()
+            parts = message_text.split(maxsplit=2)
 
-            # 等待输入宗门名称
-            name_event = await self.context.session_waiter.wait(event, timeout=60)
-            if name_event is None:
-                yield event.plain_result("⏰ 创建宗门超时")
+            if len(parts) < 3:
+                yield event.plain_result(
+                    "🏛️ 创建宗门\n\n"
+                    "请提供宗门名称和描述\n\n"
+                    "💡 使用方法：/创建宗门 [宗门名称] [宗门描述]\n"
+                    "💡 例如：/创建宗门 逍遥宗 天下第一的修仙宗门\n\n"
+                    "📋 要求：\n"
+                    "  • 宗门名称：1-20个字符\n"
+                    "  • 宗门描述：1-100个字符"
+                )
                 return
 
-            sect_name = name_event.get_plain_text().strip()
+            sect_name = parts[1].strip()
+            sect_desc = parts[2].strip()
+
+            # 验证宗门名称
             if not sect_name or len(sect_name) > 20:
                 yield event.plain_result("❌ 宗门名称不合法！请使用1-20个字符")
                 return
 
-            # 提示输入宗门描述
-            yield event.plain_result("请输入宗门描述（1-100个字符）：")
-
-            desc_event = await self.context.session_waiter.wait(event, timeout=60)
-            if desc_event is None:
-                yield event.plain_result("⏰ 创建宗门超时")
-                return
-
-            sect_desc = desc_event.get_plain_text().strip()
+            # 验证宗门描述
             if not sect_desc or len(sect_desc) > 100:
                 yield event.plain_result("❌ 宗门描述不合法！请使用1-100个字符")
                 return
@@ -1417,21 +1403,16 @@ class XiuxianPlugin(Star):
                 yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
                 return
 
-            # 确认离开
-            yield event.plain_result(
-                "⚠️ 确认要离开宗门吗？\n\n"
-                "离开后您将失去所有宗门贡献度和职位\n"
-                "请回复 '确认' 或 '取消'"
-            )
+            # 检查是否有确认参数
+            message_text = event.get_plain_text().strip()
+            parts = message_text.split()
 
-            confirm_event = await self.context.session_waiter.wait(event, timeout=30)
-            if confirm_event is None:
-                yield event.plain_result("⏰ 操作超时，已取消")
-                return
-
-            confirm_text = confirm_event.get_plain_text().strip().lower()
-            if confirm_text not in ['确认', '是', 'y', 'yes']:
-                yield event.plain_result("❌ 操作已取消")
+            if len(parts) < 2 or parts[1] not in ['确认', '是', 'y', 'yes']:
+                yield event.plain_result(
+                    "⚠️ 确认要离开宗门吗？\n\n"
+                    "离开后您将失去所有宗门贡献度和职位\n\n"
+                    "💡 使用 /离开宗门 确认 执行操作"
+                )
                 return
 
             # 离开宗门
@@ -1882,11 +1863,12 @@ class XiuxianPlugin(Star):
 /修仙初始化 - 手动初始化插件(调试用)
 
 基础命令:
-/修仙 - 创建修仙角色
+/修仙 [道号] - 创建修仙角色
 /属性 - 查看角色信息
 /灵根 - 查看灵根详情
 /修炼 - 进行修炼
-/突破 - 境界突破
+/突破 - 查看突破信息
+/突破 确认 - 执行境界突破
 
 天劫命令:
 /渡劫 - 开始渡劫或继续渡劫
@@ -1904,10 +1886,11 @@ class XiuxianPlugin(Star):
 /功法帮助 - 功法使用说明
 
 宗门命令:
-/创建宗门 - 创建新宗门
+/创建宗门 [名称] [描述] - 创建新宗门
 /宗门信息 - 查看宗门详情
 /加入宗门 [名称] - 加入指定宗门
-/离开宗门 - 离开当前宗门
+/离开宗门 - 查看离开提示
+/离开宗门 确认 - 确认离开宗门
 /宗门列表 - 查看所有宗门
 /宗门捐献 [数量] - 捐献灵石给宗门
 /宗门帮助 - 宗门使用说明
