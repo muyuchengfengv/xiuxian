@@ -144,6 +144,123 @@ class DatabaseManager:
         """)
         logger.info("创建表: skills")
 
+        # 职业信息表
+        await self.execute("""
+            CREATE TABLE IF NOT EXISTS professions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL,
+                profession_type TEXT NOT NULL,
+                rank INTEGER DEFAULT 1,
+                experience INTEGER DEFAULT 0,
+                reputation INTEGER DEFAULT 0,
+                reputation_level TEXT DEFAULT '无名小卒',
+                success_rate_bonus INTEGER DEFAULT 0,
+                quality_bonus INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES players(user_id)
+            )
+        """)
+        logger.info("创建表: professions")
+
+        # 配方/图纸/阵法/符箓表
+        await self.execute("""
+            CREATE TABLE IF NOT EXISTS recipes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT,
+                recipe_type TEXT NOT NULL,
+                name TEXT NOT NULL,
+                rank INTEGER DEFAULT 1,
+                description TEXT,
+                materials TEXT,
+                output_name TEXT,
+                output_quality TEXT,
+                base_success_rate INTEGER DEFAULT 50,
+                special_requirements TEXT,
+                source TEXT,
+                is_ai_generated BOOLEAN DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        logger.info("创建表: recipes")
+
+        # 炼制记录表
+        await self.execute("""
+            CREATE TABLE IF NOT EXISTS crafting_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL,
+                craft_type TEXT NOT NULL,
+                recipe_id INTEGER,
+                success BOOLEAN DEFAULT 0,
+                output_quality TEXT,
+                output_item_id INTEGER,
+                materials_used TEXT,
+                spirit_stone_cost INTEGER DEFAULT 0,
+                experience_gained INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES players(user_id),
+                FOREIGN KEY (recipe_id) REFERENCES recipes(id)
+            )
+        """)
+        logger.info("创建表: crafting_logs")
+
+        # 工具表（丹炉、器炉等）
+        await self.execute("""
+            CREATE TABLE IF NOT EXISTS tools (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL,
+                tool_type TEXT NOT NULL,
+                name TEXT NOT NULL,
+                quality TEXT DEFAULT '凡品',
+                success_rate_bonus INTEGER DEFAULT 0,
+                quality_bonus INTEGER DEFAULT 0,
+                special_effects TEXT,
+                durability INTEGER DEFAULT 100,
+                max_durability INTEGER DEFAULT 100,
+                is_active BOOLEAN DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES players(user_id)
+            )
+        """)
+        logger.info("创建表: tools")
+
+        # 职业技能表
+        await self.execute("""
+            CREATE TABLE IF NOT EXISTS profession_skills (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL,
+                profession_type TEXT NOT NULL,
+                skill_name TEXT NOT NULL,
+                skill_level INTEGER DEFAULT 1,
+                effect_type TEXT,
+                effect_value INTEGER DEFAULT 0,
+                description TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES players(user_id)
+            )
+        """)
+        logger.info("创建表: profession_skills")
+
+        # 活跃阵法表
+        await self.execute("""
+            CREATE TABLE IF NOT EXISTS active_formations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL,
+                formation_name TEXT NOT NULL,
+                location_id INTEGER,
+                formation_type TEXT,
+                strength INTEGER DEFAULT 1,
+                range INTEGER DEFAULT 10,
+                effects TEXT,
+                energy_cost INTEGER DEFAULT 10,
+                is_active BOOLEAN DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                expires_at TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES players(user_id)
+            )
+        """)
+        logger.info("创建表: active_formations")
+
     async def _create_indexes(self):
         """创建索引以优化查询性能"""
         indexes = [

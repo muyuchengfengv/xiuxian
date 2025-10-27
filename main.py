@@ -6,7 +6,6 @@ AstrBot 修仙世界插件
 from astrbot.api.event import filter, AstrMessageEvent, MessageEventResult
 from astrbot.api.star import Context, Star, register
 from astrbot.api import logger
-from astrbot.api.star.config import AstrBotConfig
 from pathlib import Path
 
 # 导入核心模块
@@ -44,10 +43,9 @@ from .utils import (
 class XiuxianPlugin(Star):
     """修仙世界插件主类"""
 
-    def __init__(self, context: Context, config: AstrBotConfig):
+    def __init__(self, context: Context):
         """初始化插件"""
         super().__init__(context)
-        self.config = config
 
         # 数据库路径
         data_dir = Path(__file__).parent / "data"

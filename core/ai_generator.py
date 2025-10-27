@@ -45,7 +45,11 @@ class AIGenerator:
             'story': '修仙故事',
             'location': '修仙地点',
             'character': '修仙人物',
-            'item': '修仙物品'
+            'item': '修仙物品',
+            'pill_recipe': '丹药配方',
+            'equipment_blueprint': '装备图纸',
+            'formation_pattern': '阵法图谱',
+            'talisman_pattern': '符箓图案'
         }
 
         # 预定义的模板库

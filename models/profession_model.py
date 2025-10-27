@@ -65,6 +65,46 @@ class Profession:
         }
         return rank_names.get(self.rank, "一品")
 
+    def get_reputation_level(self) -> str:
+        """获取声望等级"""
+        if self.reputation < 1000:
+            return "无名小卒"
+        elif self.reputation < 5000:
+            return "初露头角"
+        elif self.reputation < 20000:
+            return "小有名气"
+        elif self.reputation < 50000:
+            return "声名远扬"
+        elif self.reputation < 100000:
+            return "一代宗师"
+        else:
+            return "传说人物"
+
+    def get_reputation_color(self) -> str:
+        """获取声望等级颜色"""
+        reputation_colors = {
+            "无名小卒": "⚪",
+            "初露头角": "🟢",
+            "小有名气": "🔵",
+            "声名远扬": "🟣",
+            "一代宗师": "🟠",
+            "传说人物": "🟡"
+        }
+        return reputation_colors.get(self.get_reputation_level(), "⚪")
+
+    def get_reputation_benefits(self) -> List[str]:
+        """获取当前声望等级的福利"""
+        level = self.get_reputation_level()
+        benefits = {
+            "无名小卒": ["无特殊福利"],
+            "初露头角": ["材料购买折扣5%"],
+            "小有名气": ["材料购买折扣10%", "接取特殊任务"],
+            "声名远扬": ["材料购买折扣15%", "接取高级任务", "公会资源访问权限"],
+            "一代宗师": ["材料购买折扣20%", "所有任务访问", "专属称号", "可开设工坊"],
+            "传说人物": ["材料购买折扣30%", "传说任务", "万人敬仰", "传世名声", "可收徒"]
+        }
+        return benefits.get(level, ["无特殊福利"])
+
     def get_full_title(self) -> str:
         """获取完整头衔"""
         return f"{self.get_rank_name()}{self.get_profession_name()}"
@@ -139,6 +179,9 @@ class Profession:
     def get_display_info(self) -> str:
         """获取职业显示信息"""
         success_rate = self.get_success_rate() * 100
+        reputation_level = self.get_reputation_level()
+        reputation_color = self.get_reputation_color()
+        benefits = self.get_reputation_benefits()
 
         lines = [
             f"{self.get_level_color()} {self.get_full_title()}",
@@ -146,14 +189,22 @@ class Profession:
             f"⭐ 品级：{self.rank}品",
             f"📈 经验：{self.experience}/{self.get_experience_to_next_level()}",
             f"🎯 成功率：{success_rate:.1f}%",
-            f"🏆 声望：{self.reputation}",
+            f"🏆 声望：{self.reputation} ({reputation_color} {reputation_level})",
             f"🎁 技能点：{self.skill_points}",
+            "",
+            f"💎 声望福利：",
+        ]
+
+        for benefit in benefits:
+            lines.append(f"   • {benefit}")
+
+        lines.extend([
             "",
             f"📊 制作统计：",
             f"   总制作：{self.total_creations}",
             f"   成功率：{(self.successful_creations/max(1, self.total_creations)*100):.1f}%",
             f"   高品质率：{(self.high_quality_creations/max(1, self.total_creations)*100):.1f}%"
-        ]
+        ])
 
         return "\n".join(lines)
 
