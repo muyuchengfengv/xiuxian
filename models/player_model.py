@@ -57,6 +57,11 @@ class Player:
     created_at: datetime = field(default_factory=datetime.now)
     updated_at: datetime = field(default_factory=datetime.now)
 
+    # 闭关状态
+    in_retreat: bool = False  # 是否在闭关中
+    retreat_start: Optional[datetime] = None  # 闭关开始时间
+    retreat_duration: int = 0  # 闭关时长（小时）
+
     def to_dict(self) -> Dict[str, Any]:
         """转换为字典用于数据库存储"""
         data = {
@@ -87,7 +92,10 @@ class Player:
             "current_location": self.current_location,
             "last_cultivation": self.last_cultivation.isoformat() if self.last_cultivation else None,
             "created_at": self.created_at.isoformat(),
-            "updated_at": self.updated_at.isoformat()
+            "updated_at": self.updated_at.isoformat(),
+            "in_retreat": self.in_retreat,
+            "retreat_start": self.retreat_start.isoformat() if self.retreat_start else None,
+            "retreat_duration": self.retreat_duration
         }
         return data
 
@@ -112,6 +120,17 @@ class Player:
                 data["updated_at"] = datetime.fromisoformat(data["updated_at"])
         else:
             data["updated_at"] = datetime.now()
+
+        # 处理闭关相关字段
+        if data.get("retreat_start"):
+            if isinstance(data["retreat_start"], str):
+                data["retreat_start"] = datetime.fromisoformat(data["retreat_start"])
+        else:
+            data["retreat_start"] = None
+
+        # 设置默认值
+        data.setdefault("in_retreat", False)
+        data.setdefault("retreat_duration", 0)
 
         return cls(**data)
 

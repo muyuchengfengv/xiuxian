@@ -11,7 +11,7 @@ from pathlib import Path
 # 导入核心模块
 from .core.database import DatabaseManager
 from .core.player import PlayerManager
-from .core.cultivation import CultivationSystem
+from .core.cultivation import CultivationSystem, RetreatError, AlreadyInRetreatError, NotInRetreatError, RetreatNotFinishedError
 from .core.breakthrough import BreakthroughSystem
 from .core.combat import CombatSystem, InvalidTargetException, SelfCombatException
 from .core.equipment import EquipmentSystem
@@ -307,32 +307,42 @@ class XiuxianPlugin(Star):
             # 格式化玩家信息
             player_info = MessageFormatter.format_player_info(player)
 
-            # 获取修炼信息
-            cult_info = await self.cultivation_sys.get_cultivation_info(user_id)
+            # 检查是否在闭关中
+            retreat_info = await self.cultivation_sys.get_retreat_info(user_id)
 
             # 构建额外信息
             extra_info = []
 
-            # 冷却信息
-            if cult_info['can_cultivate']:
-                extra_info.append(f"✅可修炼 预计+{cult_info['next_cultivation_gain']}")
+            if retreat_info:
+                # 在闭关中，显示闭关信息
+                elapsed_h = int(retreat_info['elapsed_hours'])
+                remaining_h = int(retreat_info['remaining_hours'])
+                extra_info.append(f"🧘闭关中 已{elapsed_h}h 还需{remaining_h}h")
+                extra_info.append(f"💡/闭关信息 查看详情")
             else:
-                hours = cult_info['cooldown_remaining'] // 3600
-                minutes = (cult_info['cooldown_remaining'] % 3600) // 60
-                seconds = cult_info['cooldown_remaining'] % 60
-                time_str = ""
-                if hours > 0:
-                    time_str += f"{hours}h"
-                if minutes > 0:
-                    time_str += f"{minutes}m"
-                if seconds > 0 or not time_str:
-                    time_str += f"{seconds}s"
-                extra_info.append(f"⏰冷却{time_str}")
+                # 不在闭关中，显示修炼信息
+                cult_info = await self.cultivation_sys.get_cultivation_info(user_id)
 
-            # 突破信息
-            if cult_info['can_breakthrough']:
-                next_realm = cult_info['next_realm']['name']
-                extra_info.append(f"⚡可突破至{next_realm} /突破")
+                # 冷却信息
+                if cult_info['can_cultivate']:
+                    extra_info.append(f"✅可修炼 预计+{cult_info['next_cultivation_gain']}")
+                else:
+                    hours = cult_info['cooldown_remaining'] // 3600
+                    minutes = (cult_info['cooldown_remaining'] % 3600) // 60
+                    seconds = cult_info['cooldown_remaining'] % 60
+                    time_str = ""
+                    if hours > 0:
+                        time_str += f"{hours}h"
+                    if minutes > 0:
+                        time_str += f"{minutes}m"
+                    if seconds > 0 or not time_str:
+                        time_str += f"{seconds}s"
+                    extra_info.append(f"⏰冷却{time_str}")
+
+                # 突破信息
+                if cult_info['can_breakthrough']:
+                    next_realm = cult_info['next_realm']['name']
+                    extra_info.append(f"⚡可突破至{next_realm} /突破")
 
             result_text = player_info
             if extra_info:
@@ -373,9 +383,9 @@ class XiuxianPlugin(Star):
             logger.error(f"查看灵根失败: {e}", exc_info=True)
             yield event.plain_result(f"查看灵根失败：{str(e)}")
 
-    @filter.command("修炼", alias={"打坐", "闭关"})
+    @filter.command("修炼", alias={"打坐"})
     async def cultivate_cmd(self, event: AstrMessageEvent):
-        """进行修炼"""
+        """进行修炼（传统单次修炼）"""
         user_id = event.get_sender_id()
 
         try:
@@ -410,6 +420,204 @@ class XiuxianPlugin(Star):
         except Exception as e:
             logger.error(f"修炼失败: {e}", exc_info=True)
             yield event.plain_result(f"修炼失败：{str(e)}")
+
+    @filter.command("闭关", alias={"retreat", "闭关修炼"})
+    async def retreat_cmd(self, event: AstrMessageEvent):
+        """开始闭关修炼"""
+        user_id = event.get_sender_id()
+
+        try:
+            # 检查插件是否已初始化
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
+            # 检查是否在闭关中
+            retreat_info = await self.cultivation_sys.get_retreat_info(user_id)
+            if retreat_info:
+                # 已经在闭关中，显示闭关信息
+                elapsed_h = int(retreat_info['elapsed_hours'])
+                remaining_h = int(retreat_info['remaining_hours'])
+
+                info_lines = [
+                    "🧘 道友正在闭关中",
+                    f"⏱️已闭关 {elapsed_h}h | 还需 {remaining_h}h",
+                    f"📊预计修为 +{retreat_info['estimated_reward']}",
+                    f"⏰结束时间 {retreat_info['end_time'].strftime('%m-%d %H:%M')}"
+                ]
+
+                if retreat_info['is_finished']:
+                    info_lines.append("✅闭关已完成 /出关 可以出关了")
+                else:
+                    info_lines.append("💡/出关 强制 提前出关(奖励减半)")
+
+                yield event.plain_result("\n".join(info_lines))
+                return
+
+            # 获取闭关时长参数
+            message_text = self._get_message_text(event)
+            parts = message_text.split()
+
+            if len(parts) < 2:
+                yield event.plain_result(
+                    "🧘 闭关修炼\n\n"
+                    "请指定闭关时长（小时）\n\n"
+                    "💡 使用方法：/闭关 [时长]\n"
+                    "💡 例如：/闭关 24（闭关24小时）\n\n"
+                    "📋 时长限制：1-168小时（1-7天）\n"
+                    "⚡ 效率说明：\n"
+                    "  1-24h: 100%效率\n"
+                    "  24-72h: 90%效率\n"
+                    "  72-168h: 80%效率"
+                )
+                return
+
+            try:
+                duration_hours = int(parts[1])
+            except ValueError:
+                yield event.plain_result("❌ 时长必须是数字！")
+                return
+
+            # 开始闭关
+            result = await self.cultivation_sys.start_retreat(user_id, duration_hours)
+
+            # 构建结果消息
+            result_lines = [
+                "🧘 道友开始闭关修炼",
+                f"⏱️闭关时长 {result['duration_hours']}h",
+                f"📊预计修为 +{result['estimated_reward']}",
+                f"⏰开始时间 {result['start_time'].strftime('%m-%d %H:%M')}",
+                f"⏰结束时间 {result['end_time'].strftime('%m-%d %H:%M')}",
+                "",
+                "💡/闭关信息 查看进度",
+                "💡/出关 完成闭关（到时间后）"
+            ]
+
+            yield event.plain_result("\n".join(result_lines))
+
+            logger.info(f"用户 {user_id} 开始闭关: {duration_hours}小时")
+
+        except PlayerNotFoundError as e:
+            yield event.plain_result(str(e))
+        except AlreadyInRetreatError as e:
+            yield event.plain_result(f"⚠️ {str(e)}")
+        except ValueError as e:
+            yield event.plain_result(f"❌ {str(e)}")
+        except Exception as e:
+            logger.error(f"闭关失败: {e}", exc_info=True)
+            yield event.plain_result(f"闭关失败：{str(e)}")
+
+    @filter.command("出关", alias={"end_retreat", "结束闭关"})
+    async def end_retreat_cmd(self, event: AstrMessageEvent):
+        """结束闭关修炼（出关）"""
+        user_id = event.get_sender_id()
+
+        try:
+            # 检查插件是否已初始化
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
+            # 检查是否有强制出关参数
+            message_text = self._get_message_text(event)
+            parts = message_text.split()
+            force = len(parts) > 1 and parts[1] in ['强制', 'force', '是', 'y', 'yes']
+
+            # 结束闭关
+            result = await self.cultivation_sys.end_retreat(user_id, force)
+
+            # 构建结果消息
+            result_lines = [
+                "🎉 道友出关了！",
+                f"✨获得修为 +{result['cultivation_gained']}",
+                f"📊当前修为 {result['total_cultivation']}",
+                f"⏱️实际闭关 {result['actual_duration']:.1f}h"
+            ]
+
+            if result['is_early']:
+                result_lines.append("⚠️ 提前出关")
+            if result['penalty_applied']:
+                result_lines.append("💔 修为奖励减半")
+
+            # 检查是否可以突破
+            if result['can_breakthrough']:
+                result_lines.append(f"⚡可突破至{result['next_realm']} 需{result['required_cultivation']}")
+                result_lines.append("💡/突破 进行突破")
+
+            yield event.plain_result("\n".join(result_lines))
+
+            logger.info(
+                f"用户 {user_id} 出关: "
+                f"获得修为 {result['cultivation_gained']}, "
+                f"实际时长 {result['actual_duration']:.1f}h"
+            )
+
+        except PlayerNotFoundError as e:
+            yield event.plain_result(str(e))
+        except NotInRetreatError as e:
+            yield event.plain_result(f"⚠️ {str(e)}")
+        except RetreatNotFinishedError as e:
+            yield event.plain_result(f"⏰ {str(e)}")
+        except Exception as e:
+            logger.error(f"出关失败: {e}", exc_info=True)
+            yield event.plain_result(f"出关失败：{str(e)}")
+
+    @filter.command("闭关信息", alias={"retreat_info", "闭关状态"})
+    async def retreat_info_cmd(self, event: AstrMessageEvent):
+        """查看闭关信息"""
+        user_id = event.get_sender_id()
+
+        try:
+            # 检查插件是否已初始化
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
+            # 获取闭关信息
+            retreat_info = await self.cultivation_sys.get_retreat_info(user_id)
+
+            if not retreat_info:
+                yield event.plain_result(
+                    "📜 道友当前不在闭关中\n\n"
+                    "💡 使用 /闭关 [时长] 开始闭关修炼"
+                )
+                return
+
+            # 格式化时间
+            elapsed_h = int(retreat_info['elapsed_hours'])
+            remaining_h = int(retreat_info['remaining_hours'])
+            progress = min(100, int(retreat_info['elapsed_hours'] / retreat_info['duration_hours'] * 100))
+
+            # 构建信息消息
+            info_lines = [
+                "🧘 闭关修炼信息",
+                "─" * 40,
+                "",
+                f"⏰ 开始时间：{retreat_info['start_time'].strftime('%m-%d %H:%M')}",
+                f"⏰ 结束时间：{retreat_info['end_time'].strftime('%m-%d %H:%M')}",
+                f"⏱️ 计划时长：{retreat_info['duration_hours']}小时",
+                f"⏱️ 已闭关：{elapsed_h}小时",
+                f"⏱️ 剩余：{remaining_h}小时",
+                f"📊 进度：{progress}%",
+                "",
+                f"💎 预计修为：+{retreat_info['estimated_reward']}",
+                ""
+            ]
+
+            if retreat_info['is_finished']:
+                info_lines.append("✅ 闭关已完成！")
+                info_lines.append("💡 使用 /出关 结束闭关")
+            else:
+                info_lines.append("⏳ 闭关进行中...")
+                info_lines.append("💡 使用 /出关 强制 提前出关（奖励减半）")
+
+            yield event.plain_result("\n".join(info_lines))
+
+        except PlayerNotFoundError as e:
+            yield event.plain_result(str(e))
+        except Exception as e:
+            logger.error(f"查看闭关信息失败: {e}", exc_info=True)
+            yield event.plain_result(f"查看闭关信息失败：{str(e)}")
 
     @filter.command("突破", alias={"境界突破", "突破境界"})
     async def breakthrough_cmd(self, event: AstrMessageEvent):
@@ -1877,7 +2085,8 @@ class XiuxianPlugin(Star):
     async def help_cmd(self, event: AstrMessageEvent):
         """显示帮助信息"""
         help_text = """📖修仙世界命令
-基础: /修仙[道号] /属性 /灵根 /修炼 /突破
+基础: /修仙[道号] /属性 /灵根 /突破
+修炼: /修炼 单次修炼 | /闭关[时长] /出关 /闭关信息
 战斗: /切磋@用户 /战力
 装备: /背包 /装备[#] /卸下[槽位]
 职业: /学习职业[类型] /我的职业

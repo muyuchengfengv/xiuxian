@@ -87,7 +87,11 @@ class DatabaseManager:
 
                 last_cultivation TIMESTAMP,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+                in_retreat INTEGER DEFAULT 0,
+                retreat_start TIMESTAMP,
+                retreat_duration INTEGER DEFAULT 0
             )
         """)
         logger.info("创建表: players")
