@@ -97,6 +97,12 @@ class XiuxianPlugin(Star):
 
         logger.info("修仙世界插件已卸载")
 
+    # ========== 辅助方法 ==========
+
+    def _check_initialized(self) -> bool:
+        """检查插件是否已初始化"""
+        return self.player_mgr is not None
+
     # ========== 命令处理器 ==========
 
     @filter.command("修仙", alias={"开始修仙", "创建角色"})
@@ -105,6 +111,11 @@ class XiuxianPlugin(Star):
         user_id = event.get_sender_id()
 
         try:
+            # 检查插件是否已初始化
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
             # 1. 检查是否已创建角色
             if await self.player_mgr.player_exists(user_id):
                 yield event.plain_result("道友已经踏上修仙之路，无需重复创建角色。\n使用 /属性 查看角色信息")
@@ -164,6 +175,11 @@ class XiuxianPlugin(Star):
         user_id = event.get_sender_id()
 
         try:
+            # 检查插件是否已初始化
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
             # 获取玩家信息
             player = await self.player_mgr.get_player_or_error(user_id)
 
@@ -218,6 +234,11 @@ class XiuxianPlugin(Star):
         user_id = event.get_sender_id()
 
         try:
+            # 检查插件是否已初始化
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
             # 获取玩家信息
             player = await self.player_mgr.get_player_or_error(user_id)
 
@@ -238,6 +259,11 @@ class XiuxianPlugin(Star):
         user_id = event.get_sender_id()
 
         try:
+            # 检查插件是否已初始化
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
             # 执行修炼
             result = await self.cultivation_sys.cultivate(user_id)
 
@@ -275,6 +301,11 @@ class XiuxianPlugin(Star):
         user_id = event.get_sender_id()
 
         try:
+            # 检查插件是否已初始化
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
             # 获取突破信息
             breakthrough_info = await self.breakthrough_sys.get_breakthrough_info(user_id)
 
@@ -402,6 +433,11 @@ class XiuxianPlugin(Star):
         attacker_id = event.get_sender_id()
 
         try:
+            # 检查插件是否已初始化
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
             # 1. 检查攻击者是否已创建角色
             attacker = await self.player_mgr.get_player_or_error(attacker_id)
 
@@ -444,6 +480,11 @@ class XiuxianPlugin(Star):
         user_id = event.get_sender_id()
 
         try:
+            # 检查插件是否已初始化
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
             # 获取玩家信息
             player = await self.player_mgr.get_player_or_error(user_id)
 
@@ -485,6 +526,11 @@ class XiuxianPlugin(Star):
         user_id = event.get_sender_id()
 
         try:
+            # 检查插件是否已初始化
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
             # 获取装备列表
             inventory_text = await self.equipment_sys.format_equipment_list(user_id)
 
@@ -503,6 +549,11 @@ class XiuxianPlugin(Star):
         message_text = event.get_plain_text().strip()
 
         try:
+            # 检查插件是否已初始化
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
             # 提取装备编号
             parts = message_text.split()
             if len(parts) < 2:
@@ -560,6 +611,11 @@ class XiuxianPlugin(Star):
         message_text = event.get_plain_text().strip()
 
         try:
+            # 检查插件是否已初始化
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
             # 提取槽位名称
             parts = message_text.split()
             if len(parts) < 2:
@@ -613,6 +669,11 @@ class XiuxianPlugin(Star):
         user_id = event.get_sender_id()
 
         try:
+            # 检查插件是否已初始化
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
             # 提取装备类型
             message_text = event.get_plain_text().strip()
             parts = message_text.split()
@@ -656,6 +717,11 @@ class XiuxianPlugin(Star):
         message_text = event.get_plain_text().strip()
 
         try:
+            # 检查插件是否已初始化
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
             # 提取内容类型
             parts = message_text.split()
             if len(parts) < 2:
@@ -732,10 +798,15 @@ class XiuxianPlugin(Star):
 
     @filter.command("AI历史", alias={"ai_history", "历史"})
     async def ai_history_cmd(self, event: AstrMessageEvent):
-        """查看AI生成���史"""
+        """查看AI生成历史"""
         user_id = event.get_sender_id()
 
         try:
+            # 检查插件是否已初始化
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
             # 获取历史记录
             history = await self.ai_generator.get_generation_history(user_id, 10)
 
@@ -816,6 +887,11 @@ class XiuxianPlugin(Star):
         user_id = event.get_sender_id()
 
         try:
+            # 检查插件是否已初始化
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
             methods_text = await self.method_sys.format_method_list(user_id)
             yield event.plain_result(methods_text)
 
@@ -829,6 +905,11 @@ class XiuxianPlugin(Star):
         user_id = event.get_sender_id()
 
         try:
+            # 检查插件是否已初始化
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
             equipped_text = await self.method_sys.format_equipped_methods(user_id)
             yield event.plain_result(equipped_text)
 
@@ -843,6 +924,11 @@ class XiuxianPlugin(Star):
         message_text = event.get_plain_text().strip()
 
         try:
+            # 检查插件是否已初始化
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
             # 解析命令参数
             parts = message_text.split()
             if len(parts) < 3:
@@ -898,6 +984,11 @@ class XiuxianPlugin(Star):
         message_text = event.get_plain_text().strip()
 
         try:
+            # 检查插件是否已初始化
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
             # 解析命令参数
             parts = message_text.split()
             if len(parts) < 2:
@@ -925,13 +1016,18 @@ class XiuxianPlugin(Star):
             logger.error(f"卸下功法失败: {e}", exc_info=True)
             yield event.plain_result(f"卸下功法失败：{str(e)}")
 
-    @filter.command("功法��情", alias={"method_info", "功法信息"})
+    @filter.command("功法详情", alias={"method_info", "功法信息"})
     async def method_info_cmd(self, event: AstrMessageEvent):
         """查看功法详情"""
         user_id = event.get_sender_id()
         message_text = event.get_plain_text().strip()
 
         try:
+            # 检查插件是否已初始化
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
             # 解析命令参数
             parts = message_text.split()
             if len(parts) < 2:
@@ -975,6 +1071,11 @@ class XiuxianPlugin(Star):
         message_text = event.get_plain_text().strip()
 
         try:
+            # 检查插件是否已初始化
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
             # 解析命令参数
             parts = message_text.split()
 
@@ -1061,6 +1162,11 @@ class XiuxianPlugin(Star):
         user_id = event.get_sender_id()
 
         try:
+            # 检查插件是否已初始化
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
             # 提示输入宗门名称
             yield event.plain_result(
                 "🏛️ 创建宗门\n\n"
@@ -1117,6 +1223,11 @@ class XiuxianPlugin(Star):
         user_id = event.get_sender_id()
 
         try:
+            # 检查插件是否已初始化
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
             # 获取玩家所在宗门
             sect = await self.sect_sys.get_player_sect(user_id)
             if not sect:
@@ -1161,6 +1272,11 @@ class XiuxianPlugin(Star):
         message_text = event.get_plain_text().strip()
 
         try:
+            # 检查插件是否已初始化
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
             # 解析宗门名称
             parts = message_text.split()
             if len(parts) < 2:
@@ -1204,6 +1320,11 @@ class XiuxianPlugin(Star):
         user_id = event.get_sender_id()
 
         try:
+            # 检查插件是否已初始化
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
             # 确认离开
             yield event.plain_result(
                 "⚠️ 确认要离开宗门吗？\n\n"
@@ -1241,6 +1362,11 @@ class XiuxianPlugin(Star):
     async def sect_list_cmd(self, event: AstrMessageEvent):
         """查看所有宗门"""
         try:
+            # 检查插件是否已初始化
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
             sects = await self.sect_sys.get_all_sects(limit=20)
 
             if not sects:
@@ -1276,6 +1402,11 @@ class XiuxianPlugin(Star):
         message_text = event.get_plain_text().strip()
 
         try:
+            # 检查插件是否已初始化
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
             # 解析捐献数量
             parts = message_text.split()
             if len(parts) < 2:
@@ -1359,6 +1490,11 @@ class XiuxianPlugin(Star):
         user_id = event.get_sender_id()
 
         try:
+            # 检查插件是否已初始化
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
             # 获取玩家信息
             player = await self.player_mgr.get_player_or_error(user_id)
 
@@ -1486,6 +1622,11 @@ class XiuxianPlugin(Star):
         user_id = event.get_sender_id()
 
         try:
+            # 检查插件是否已初始化
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
             tribulation = await self.tribulation_sys.get_active_tribulation(user_id)
 
             if not tribulation:
@@ -1538,6 +1679,11 @@ class XiuxianPlugin(Star):
         user_id = event.get_sender_id()
 
         try:
+            # 检查插件是否已初始化
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
             history = await self.tribulation_sys.get_tribulation_history(user_id, 10)
 
             if not history:
@@ -1575,6 +1721,11 @@ class XiuxianPlugin(Star):
         user_id = event.get_sender_id()
 
         try:
+            # 检查插件是否已初始化
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
             stats = await self.tribulation_sys.get_tribulation_stats(user_id)
 
             if stats['total_tribulations'] == 0:
