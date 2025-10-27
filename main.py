@@ -20,6 +20,13 @@ from .core.cultivation_method import CultivationMethodSystem, MethodNotFoundErro
 from .core.sect import SectSystem, SectError, SectNotFoundError, SectNameExistsError, NotSectMemberError, AlreadyInSectError, InsufficientPermissionError, InsufficientResourceError, SectFullError
 from .core.tribulation import TribulationSystem, TribulationError, TribulationNotFoundError, TribulationInProgressError, NoTribulationRequiredError, InsufficientHPError
 
+# 导入职业系统模块
+from .core.profession import ProfessionManager, ProfessionError, AlreadyLearnedError, InsufficientLevelError, ProfessionNotFoundError
+from .core.alchemy import AlchemySystem, AlchemyError, RecipeNotFoundError
+from .core.refining import RefiningSystem, RefiningError, BlueprintNotFoundError
+from .core.formation import FormationSystem, FormationError, FormationPatternNotFoundError, FormationAlreadyExistsError
+from .core.talisman import TalismanSystem, TalismanError, TalismanPatternNotFoundError
+
 # 导入工具类
 from .utils import (
     MessageFormatter,
@@ -65,6 +72,13 @@ class XiuxianPlugin(Star):
         self.ai_generator = None  # 在on_loaded中初始化
         self.tribulation_sys = None  # 在on_loaded中初始化
 
+        # 职业系统管理器
+        self.profession_mgr = None  # 在on_loaded中初始化
+        self.alchemy_sys = None  # 在on_loaded中初始化
+        self.refining_sys = None  # 在on_loaded中初始化
+        self.formation_sys = None  # 在on_loaded中初始化
+        self.talisman_sys = None  # 在on_loaded中初始化
+
         logger.info("修仙世界插件已加载")
 
     @filter.on_astrbot_loaded()
@@ -84,8 +98,21 @@ class XiuxianPlugin(Star):
         self.ai_generator = AIGenerator(self.db, self.player_mgr)
         self.tribulation_sys = TribulationSystem(self.db, self.player_mgr)
 
+        # 初始化职业系统
+        self.profession_mgr = ProfessionManager(self.db, self.player_mgr)
+        self.alchemy_sys = AlchemySystem(self.db, self.player_mgr, self.profession_mgr)
+        self.refining_sys = RefiningSystem(self.db, self.player_mgr, self.profession_mgr)
+        self.formation_sys = FormationSystem(self.db, self.player_mgr, self.profession_mgr)
+        self.talisman_sys = TalismanSystem(self.db, self.player_mgr, self.profession_mgr)
+
         # 注入天劫系统到突破系统
         self.breakthrough_sys.set_tribulation_system(self.tribulation_sys)
+
+        # 初始化基础职业配方
+        await self.alchemy_sys.init_base_recipes()
+        await self.refining_sys.init_base_blueprints()
+        await self.formation_sys.init_base_formations()
+        await self.talisman_sys.init_base_talismans()
 
         logger.info("修仙世界插件初始化完成")
 
@@ -1827,6 +1854,23 @@ class XiuxianPlugin(Star):
 /卸下 [槽位] - 卸下装备
 /获得装备 [类型] - 获得随机装备(测试)
 
+职业命令:
+/学习职业 [职业类型] - 学习新职业(炼丹师/炼器师/阵法师/符箓师)
+/我的职业 - 查看已学习职业
+/炼丹 [编号] - 炼制丹药
+/丹方列表 - 查看可用丹方
+/炼器 [编号] - 炼制装备
+/图纸列表 - 查看可用图纸
+/强化装备 [装备ID] - 强化装备
+/布阵 [编号] - 布置阵法
+/阵法列表 - 查看可用阵法
+/查看阵法 - 查看当前位置活跃阵法
+/破阵 [编号] [方法] - 破解阵法
+/制符 [编号] [数量] - 制作符箓
+/符箓列表 - 查看可用符箓配方
+/我的符箓 - 查看拥有的符箓
+/使用符箓 [符箓名] - 使用符箓
+
 AI命令:
 /AI生成 [类型] - AI生成内容
 /AI历史 - 查看生成历史
@@ -1835,3 +1879,385 @@ AI命令:
 提示: 更多功能正在开发中...
         """.strip()
         yield event.plain_result(help_text)
+
+    # ========== 职业系统命令 ==========
+
+    @filter.command("学习职业", alias={"学职业", "拜师"})
+    async def learn_profession_cmd(self, event: AstrMessageEvent):
+        """学习新职业"""
+        user_id = event.get_sender_id()
+
+        try:
+            # 检查插件是否已初始化
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
+            # 获取职业类型参数
+            text = event.get_plain_text().strip()
+            args = text.split()
+
+            # 职业类型映射
+            profession_map = {
+                "炼丹师": "alchemist",
+                "炼器师": "blacksmith",
+                "阵法师": "formation_master",
+                "符箓师": "talisman_master"
+            }
+
+            if len(args) < 2:
+                yield event.plain_result(
+                    "📜 学习职业\n"
+                    "─" * 40 + "\n\n"
+                    "请选择要学习的职业：\n\n"
+                    "🔥 炼丹师 - 精通炼制各类丹药\n"
+                    "⚒️ 炼器师 - 精通炼制各类法宝装备\n"
+                    "⭐ 阵法师 - 精通布置和破解各类阵法\n"
+                    "📜 符箓师 - 精通制作和使用各类符箓\n\n"
+                    "💡 使用方法: /学习职业 [职业类型]\n"
+                    "💡 例如: /学习职业 炼丹师"
+                )
+                return
+
+            profession_name = args[1]
+            profession_type = profession_map.get(profession_name)
+
+            if not profession_type:
+                yield event.plain_result(
+                    f"❌ 无效的职业类型: {profession_name}\n\n"
+                    "可选职业: 炼丹师、炼器师、阵法师、符箓师"
+                )
+                return
+
+            # 学习职业
+            profession = await self.profession_mgr.learn_profession(user_id, profession_type)
+
+            yield event.plain_result(
+                f"🎉 恭喜道友学习了{profession.get_profession_name()}职业！\n\n"
+                f"{profession.get_display_info()}\n\n"
+                f"💡 使用 /我的职业 查看职业信息\n"
+                f"💡 使用 /{profession.get_profession_name()[0:2]}列�� 查看可用配方"
+            )
+
+        except PlayerNotFoundError:
+            yield event.plain_result("您还没有创建角色，请先使用 /修仙 创建角色")
+        except AlreadyLearnedError as e:
+            yield event.plain_result(f"❌ {str(e)}")
+        except ValueError as e:
+            yield event.plain_result(f"❌ {str(e)}")
+        except Exception as e:
+            logger.error(f"学习职业失败: {e}", exc_info=True)
+            yield event.plain_result(f"学习职业失败：{str(e)}")
+
+    @filter.command("我的职业", alias={"职业", "profession", "职业列表"})
+    async def my_professions_cmd(self, event: AstrMessageEvent):
+        """查看已学习的职业"""
+        user_id = event.get_sender_id()
+
+        try:
+            # 检查插件是否已初始化
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
+            # 获取职业列表
+            formatted = await self.profession_mgr.format_profession_list(user_id)
+            yield event.plain_result(formatted)
+
+        except PlayerNotFoundError:
+            yield event.plain_result("您还没有创建角色，请先使用 /修仙 创建角色")
+        except Exception as e:
+            logger.error(f"查看职业失败: {e}", exc_info=True)
+            yield event.plain_result(f"查看职业失败：{str(e)}")
+
+    # ========== 炼丹系统命令 ==========
+
+    @filter.command("丹方列表", alias={"丹方", "alchemy_recipes"})
+    async def alchemy_recipes_cmd(self, event: AstrMessageEvent):
+        """查看可用丹方列表"""
+        user_id = event.get_sender_id()
+        try:
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+            formatted = await self.alchemy_sys.format_recipe_list(user_id)
+            yield event.plain_result(formatted)
+        except PlayerNotFoundError:
+            yield event.plain_result("您还没有创建角色，请先使用 /修仙 创建角色")
+        except Exception as e:
+            logger.error(f"查看丹方列表失败: {e}", exc_info=True)
+            yield event.plain_result(f"查看丹方列表失败：{str(e)}")
+
+    @filter.command("炼丹", alias={"refine_pill", "炼制丹药"})
+    async def refine_pill_cmd(self, event: AstrMessageEvent):
+        """炼制丹药"""
+        user_id = event.get_sender_id()
+        try:
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+            text = event.get_plain_text().strip()
+            args = text.split()
+            if len(args) < 2:
+                yield event.plain_result(
+                    "📜 炼制丹药\n" + "─" * 40 + "\n\n"
+                    "请指定要炼制的丹方编号\n\n"
+                    "💡 使用方法: /炼丹 [丹方编号]\n"
+                    "💡 例如: /炼丹 1\n\n"
+                    "💡 使用 /丹方列表 查看可用丹方"
+                )
+                return
+            try:
+                recipe_id = int(args[1])
+            except ValueError:
+                yield event.plain_result("❌ 丹方编号必须是数字")
+                return
+            result = await self.alchemy_sys.refine_pill(user_id, recipe_id)
+            if result['success']:
+                yield event.plain_result(
+                    f"🎉 {result['message']}\n\n"
+                    f"丹药名称: {result['quality']}{result['pill_name']}\n"
+                    f"消耗灵石: {result['spirit_stone_cost']}\n"
+                    f"获得经验: {result['experience_gained']}\n"
+                    f"获得声望: {result['reputation_gained']}"
+                )
+            else:
+                yield event.plain_result(f"😞 {result['message']}\n\n消耗灵石: {result['spirit_stone_cost']}\n获得经验: {result['experience_gained']}")
+        except PlayerNotFoundError:
+            yield event.plain_result("您还没有创建角色，请先使用 /修仙 创建角色")
+        except ProfessionNotFoundError as e:
+            yield event.plain_result(f"❌ {str(e)}\n\n💡 使用 /学习职业 炼丹师 学习炼丹")
+        except RecipeNotFoundError as e:
+            yield event.plain_result(f"❌ {str(e)}")
+        except AlchemyError as e:
+            yield event.plain_result(f"❌ {str(e)}")
+        except Exception as e:
+            logger.error(f"炼丹失败: {e}", exc_info=True)
+            yield event.plain_result(f"炼丹失败：{str(e)}")
+
+    # ========== 炼器系统命令 ==========
+
+    @filter.command("图纸列表", alias={"图纸", "refining_blueprints"})
+    async def refining_blueprints_cmd(self, event: AstrMessageEvent):
+        """查看可用图纸列表"""
+        user_id = event.get_sender_id()
+        try:
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+            formatted = await self.refining_sys.format_blueprint_list(user_id)
+            yield event.plain_result(formatted)
+        except PlayerNotFoundError:
+            yield event.plain_result("您还没有创建角色，请先使用 /修仙 创建角色")
+        except Exception as e:
+            logger.error(f"查看图纸列表失败: {e}", exc_info=True)
+            yield event.plain_result(f"查看图纸列表失败：{str(e)}")
+
+    @filter.command("炼器", alias={"refine_equipment", "炼制装备"})
+    async def refine_equipment_cmd(self, event: AstrMessageEvent):
+        """炼制装备"""
+        user_id = event.get_sender_id()
+        try:
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+            text = event.get_plain_text().strip()
+            args = text.split()
+            if len(args) < 2:
+                yield event.plain_result(
+                    "📜 炼制装备\n" + "─" * 40 + "\n\n"
+                    "请指定要炼制的图纸编号\n\n"
+                    "💡 使用方法: /炼器 [图纸编号]\n"
+                    "💡 例如: /炼器 1\n\n"
+                    "💡 使用 /图纸列表 查看可用图纸"
+                )
+                return
+            try:
+                blueprint_id = int(args[1])
+            except ValueError:
+                yield event.plain_result("❌ 图纸编号必须是数字")
+                return
+            result = await self.refining_sys.refine_equipment(user_id, blueprint_id)
+            if result['success']:
+                attrs_str = "\n".join([f"  {k}: {v}" for k, v in result['attributes'].items()])
+                yield event.plain_result(
+                    f"🎉 {result['message']}\n\n"
+                    f"装备名称: {result['quality']}{result['equipment_name']}\n"
+                    f"装备ID: {result['equipment_id']}\n"
+                    f"属性:\n{attrs_str}\n\n"
+                    f"消耗灵石: {result['spirit_stone_cost']}\n"
+                    f"获得经验: {result['experience_gained']}\n"
+                    f"获得声望: {result['reputation_gained']}"
+                )
+            else:
+                yield event.plain_result(f"😞 {result['message']}\n\n消耗灵石: {result['spirit_stone_cost']}\n获得经验: {result['experience_gained']}")
+        except PlayerNotFoundError:
+            yield event.plain_result("您还没有创建角色，请先使用 /修仙 创建角色")
+        except ProfessionNotFoundError as e:
+            yield event.plain_result(f"❌ {str(e)}\n\n💡 使用 /学习职业 炼器师 学习炼器")
+        except BlueprintNotFoundError as e:
+            yield event.plain_result(f"❌ {str(e)}")
+        except RefiningError as e:
+            yield event.plain_result(f"❌ {str(e)}")
+        except Exception as e:
+            logger.error(f"炼器失败: {e}", exc_info=True)
+            yield event.plain_result(f"炼器失败：{str(e)}")
+
+    # ========== 阵法系统命令 ==========
+
+    @filter.command("阵法列表", alias={"阵法", "formation_list"})
+    async def formation_list_cmd(self, event: AstrMessageEvent):
+        """查看可用阵法列表"""
+        user_id = event.get_sender_id()
+        try:
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+            formatted = await self.formation_sys.format_formation_list(user_id)
+            yield event.plain_result(formatted)
+        except PlayerNotFoundError:
+            yield event.plain_result("您还没有创建角色，请先使用 /修仙 创建角色")
+        except Exception as e:
+            logger.error(f"查看阵法列表失败: {e}", exc_info=True)
+            yield event.plain_result(f"查看阵法列表失败：{str(e)}")
+
+    @filter.command("布阵", alias={"deploy_formation", "布置阵法"})
+    async def deploy_formation_cmd(self, event: AstrMessageEvent):
+        """布置阵法"""
+        user_id = event.get_sender_id()
+        try:
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+            text = event.get_plain_text().strip()
+            args = text.split()
+            if len(args) < 2:
+                yield event.plain_result(
+                    "📜 布置阵法\n" + "─" * 40 + "\n\n"
+                    "请指定要布置的阵法编号\n\n"
+                    "💡 使用方法: /布阵 [阵法编号]\n"
+                    "💡 例如: /布阵 1\n\n"
+                    "💡 使用 /阵法列表 查看可用阵法"
+                )
+                return
+            try:
+                formation_id = int(args[1])
+            except ValueError:
+                yield event.plain_result("❌ 阵法编号必须是数字")
+                return
+            result = await self.formation_sys.deploy_formation(user_id, formation_id)
+            if result['success']:
+                yield event.plain_result(
+                    f"🎉 {result['message']}\n\n"
+                    f"阵法名称: {result['formation_name']}\n"
+                    f"阵法类型: {result['formation_type']}\n"
+                    f"布阵位置: {result['location']}\n"
+                    f"阵法强度: {result['strength']}\n"
+                    f"作用范围: {result['range']}米\n"
+                    f"持续时间: {result['duration_hours']}小时\n"
+                    f"过期时间: {result['expires_at']}\n\n"
+                    f"消耗灵石: {result['spirit_stone_cost']}\n"
+                    f"获得经验: {result['experience_gained']}\n"
+                    f"获得声望: {result['reputation_gained']}"
+                )
+            else:
+                yield event.plain_result(f"😞 {result['message']}\n\n消耗灵石: {result['spirit_stone_cost']}\n获得经验: {result['experience_gained']}")
+        except PlayerNotFoundError:
+            yield event.plain_result("您还没有创建角色，请先使用 /修仙 创建角色")
+        except ProfessionNotFoundError as e:
+            yield event.plain_result(f"❌ {str(e)}\n\n💡 使用 /学习职业 阵法师 学习阵法")
+        except FormationPatternNotFoundError as e:
+            yield event.plain_result(f"❌ {str(e)}")
+        except FormationAlreadyExistsError as e:
+            yield event.plain_result(f"❌ {str(e)}")
+        except FormationError as e:
+            yield event.plain_result(f"❌ {str(e)}")
+        except Exception as e:
+            logger.error(f"布阵失败: {e}", exc_info=True)
+            yield event.plain_result(f"布阵失败：{str(e)}")
+
+    # ========== 符箓系统命令 ==========
+
+    @filter.command("符箓列表", alias={"符箓", "talisman_list"})
+    async def talisman_list_cmd(self, event: AstrMessageEvent):
+        """查看可用符箓配方列表"""
+        user_id = event.get_sender_id()
+        try:
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+            formatted = await self.talisman_sys.format_talisman_list(user_id)
+            yield event.plain_result(formatted)
+        except PlayerNotFoundError:
+            yield event.plain_result("您还没有创建角色，请先使用 /修仙 创建角色")
+        except Exception as e:
+            logger.error(f"查看符箓列表失败: {e}", exc_info=True)
+            yield event.plain_result(f"查看符箓列表失败：{str(e)}")
+
+    @filter.command("制符", alias={"craft_talisman", "制作符箓"})
+    async def craft_talisman_cmd(self, event: AstrMessageEvent):
+        """制作符箓"""
+        user_id = event.get_sender_id()
+        try:
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+            text = event.get_plain_text().strip()
+            args = text.split()
+            if len(args) < 2:
+                yield event.plain_result(
+                    "📜 制作符箓\n" + "─" * 40 + "\n\n"
+                    "请指定要制作的符箓编号和数量\n\n"
+                    "💡 使用方法: /制符 [符箓编号] [数量]\n"
+                    "💡 例如: /制符 1 3\n\n"
+                    "💡 使用 /符箓列表 查看可用符箓"
+                )
+                return
+            try:
+                talisman_id = int(args[1])
+                quantity = int(args[2]) if len(args) > 2 else 1
+            except ValueError:
+                yield event.plain_result("❌ 符箓编号和数量必须是数字")
+                return
+            result = await self.talisman_sys.craft_talisman(user_id, talisman_id, quantity)
+            if result['success']:
+                yield event.plain_result(
+                    f"🎉 {result['message']}\n\n"
+                    f"符箓名称: {result['talisman_name']}\n"
+                    f"符箓类型: {result['talisman_type']}\n"
+                    f"制作数量: {result['total_quantity']}\n"
+                    f"成功数量: {result['success_count']}\n"
+                    f"失败数量: {result['failed_count']}\n\n"
+                    f"消耗灵石: {result['spirit_stone_cost']}\n"
+                    f"获得经验: {result['experience_gained']}\n"
+                    f"获得声望: {result['reputation_gained']}"
+                )
+            else:
+                yield event.plain_result(f"😞 {result['message']}\n\n消耗灵石: {result['spirit_stone_cost']}\n获得经验: {result['experience_gained']}")
+        except PlayerNotFoundError:
+            yield event.plain_result("您还没有创建角色，请先使用 /修仙 创建角色")
+        except ProfessionNotFoundError as e:
+            yield event.plain_result(f"❌ {str(e)}\n\n💡 使用 /学习职业 符箓师 学习符箓")
+        except TalismanPatternNotFoundError as e:
+            yield event.plain_result(f"❌ {str(e)}")
+        except TalismanError as e:
+            yield event.plain_result(f"❌ {str(e)}")
+        except Exception as e:
+            logger.error(f"制符失败: {e}", exc_info=True)
+            yield event.plain_result(f"制符失败：{str(e)}")
+
+    @filter.command("我的符箓", alias={"查看符箓", "player_talismans"})
+    async def player_talismans_cmd(self, event: AstrMessageEvent):
+        """查看拥有的符箓"""
+        user_id = event.get_sender_id()
+        try:
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+            formatted = await self.talisman_sys.format_player_talismans(user_id)
+            yield event.plain_result(formatted)
+        except PlayerNotFoundError:
+            yield event.plain_result("您还没有创建角色，请先使用 /修仙 创建角色")
+        except Exception as e:
+            logger.error(f"查看符箓失败: {e}", exc_info=True)
+            yield event.plain_result(f"查看符箓失败：{str(e)}")

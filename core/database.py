@@ -261,6 +261,142 @@ class DatabaseManager:
         """)
         logger.info("创建表: active_formations")
 
+        # 物品表 (用于存储符箓等消耗品)
+        await self.execute("""
+            CREATE TABLE IF NOT EXISTS items (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL,
+                item_type TEXT NOT NULL,
+                item_name TEXT NOT NULL,
+                quality TEXT,
+                quantity INTEGER DEFAULT 1,
+                description TEXT,
+                effect TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES players(user_id)
+            )
+        """)
+        logger.info("创建表: items")
+
+        # 功法表
+        await self.execute("""
+            CREATE TABLE IF NOT EXISTS cultivation_methods (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT,
+                name TEXT NOT NULL,
+                type TEXT NOT NULL,
+                rank TEXT DEFAULT '凡阶',
+                quality TEXT DEFAULT '普通',
+                element TEXT,
+                level INTEGER DEFAULT 1,
+                proficiency INTEGER DEFAULT 0,
+                cultivation_speed_bonus REAL DEFAULT 0,
+                combat_power_bonus REAL DEFAULT 0,
+                special_effects TEXT,
+                description TEXT,
+                source TEXT,
+                is_ai_generated BOOLEAN DEFAULT 0,
+                is_equipped BOOLEAN DEFAULT 0,
+                equipped_slot TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES players(user_id)
+            )
+        """)
+        logger.info("创建表: cultivation_methods")
+
+        # 宗门表
+        await self.execute("""
+            CREATE TABLE IF NOT EXISTS sects (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT UNIQUE NOT NULL,
+                founder_id TEXT NOT NULL,
+                level INTEGER DEFAULT 1,
+                reputation INTEGER DEFAULT 0,
+                resource_pool INTEGER DEFAULT 0,
+                max_members INTEGER DEFAULT 50,
+                member_count INTEGER DEFAULT 1,
+                description TEXT,
+                announcement TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (founder_id) REFERENCES players(user_id)
+            )
+        """)
+        logger.info("创建表: sects")
+
+        # 宗门成员表
+        await self.execute("""
+            CREATE TABLE IF NOT EXISTS sect_members (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                sect_id INTEGER NOT NULL,
+                user_id TEXT NOT NULL,
+                position TEXT DEFAULT '外门弟子',
+                contribution INTEGER DEFAULT 0,
+                joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (sect_id) REFERENCES sects(id),
+                FOREIGN KEY (user_id) REFERENCES players(user_id),
+                UNIQUE(sect_id, user_id)
+            )
+        """)
+        logger.info("创建表: sect_members")
+
+        # AI生成历史表
+        await self.execute("""
+            CREATE TABLE IF NOT EXISTS ai_generation_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL,
+                generation_type TEXT NOT NULL,
+                prompt TEXT,
+                result TEXT,
+                metadata TEXT,
+                success BOOLEAN DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES players(user_id)
+            )
+        """)
+        logger.info("创建表: ai_generation_history")
+
+        # 天劫表
+        await self.execute("""
+            CREATE TABLE IF NOT EXISTS tribulations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL,
+                tribulation_type TEXT NOT NULL,
+                from_realm TEXT NOT NULL,
+                to_realm TEXT NOT NULL,
+                difficulty INTEGER DEFAULT 1,
+                current_wave INTEGER DEFAULT 0,
+                max_waves INTEGER DEFAULT 9,
+                damage_taken INTEGER DEFAULT 0,
+                cultivation_bonus REAL DEFAULT 0,
+                status TEXT DEFAULT 'active',
+                success BOOLEAN,
+                rewards TEXT,
+                started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                completed_at TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES players(user_id)
+            )
+        """)
+        logger.info("创建表: tribulations")
+
+        # 职业考核表
+        await self.execute("""
+            CREATE TABLE IF NOT EXISTS profession_exams (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL,
+                profession_type TEXT NOT NULL,
+                target_rank INTEGER NOT NULL,
+                status TEXT DEFAULT 'in_progress',
+                tasks_completed TEXT,
+                score INTEGER DEFAULT 0,
+                passed BOOLEAN,
+                rewards TEXT,
+                started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                completed_at TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES players(user_id)
+            )
+        """)
+        logger.info("创建表: profession_exams")
+
     async def _create_indexes(self):
         """创建索引以优化查询性能"""
         indexes = [
@@ -268,6 +404,18 @@ class DatabaseManager:
             "CREATE INDEX IF NOT EXISTS idx_equipment_user ON equipment(user_id)",
             "CREATE INDEX IF NOT EXISTS idx_equipment_equipped ON equipment(user_id, is_equipped)",
             "CREATE INDEX IF NOT EXISTS idx_skills_user ON skills(user_id)",
+            "CREATE INDEX IF NOT EXISTS idx_professions_user ON professions(user_id)",
+            "CREATE INDEX IF NOT EXISTS idx_recipes_type ON recipes(recipe_type)",
+            "CREATE INDEX IF NOT EXISTS idx_items_user ON items(user_id)",
+            "CREATE INDEX IF NOT EXISTS idx_items_type ON items(user_id, item_type)",
+            "CREATE INDEX IF NOT EXISTS idx_cultivation_methods_user ON cultivation_methods(user_id)",
+            "CREATE INDEX IF NOT EXISTS idx_cultivation_methods_equipped ON cultivation_methods(user_id, is_equipped)",
+            "CREATE INDEX IF NOT EXISTS idx_sect_members_sect ON sect_members(sect_id)",
+            "CREATE INDEX IF NOT EXISTS idx_sect_members_user ON sect_members(user_id)",
+            "CREATE INDEX IF NOT EXISTS idx_tribulations_user ON tribulations(user_id)",
+            "CREATE INDEX IF NOT EXISTS idx_tribulations_status ON tribulations(user_id, status)",
+            "CREATE INDEX IF NOT EXISTS idx_active_formations_user ON active_formations(user_id)",
+            "CREATE INDEX IF NOT EXISTS idx_active_formations_location ON active_formations(location_id, is_active)",
         ]
 
         for index_sql in indexes:
