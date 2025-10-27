@@ -54,6 +54,10 @@ class XiuxianPlugin(Star):
         """初始化插件"""
         super().__init__(context)
 
+        logger.info("=" * 60)
+        logger.info("修仙世界插件开始加载...")
+        logger.info("=" * 60)
+
         # 数据库路径
         data_dir = Path(__file__).parent / "data"
         db_path = data_dir / "xiuxian.db"
@@ -61,60 +65,107 @@ class XiuxianPlugin(Star):
         # 初始化数据库管理器
         self.db = DatabaseManager(str(db_path))
 
+        # 初始化标志
+        self._initialized = False
+        self._initializing = False
+
         # 初始化业务管理器
-        self.player_mgr = None  # 在on_loaded中初始化
-        self.cultivation_sys = None  # 在on_loaded中初始化
-        self.breakthrough_sys = None  # 在on_loaded中初始化
-        self.combat_sys = None  # 在on_loaded中初始化
-        self.equipment_sys = None  # 在on_loaded中初始化
-        self.method_sys = None  # 在on_loaded中初始化
-        self.sect_sys = None  # 在on_loaded中初始化
-        self.ai_generator = None  # 在on_loaded中初始化
-        self.tribulation_sys = None  # 在on_loaded中初始化
+        self.player_mgr = None  # 在首次使用时初始化
+        self.cultivation_sys = None
+        self.breakthrough_sys = None
+        self.combat_sys = None
+        self.equipment_sys = None
+        self.method_sys = None
+        self.sect_sys = None
+        self.ai_generator = None
+        self.tribulation_sys = None
 
         # 职业系统管理器
-        self.profession_mgr = None  # 在on_loaded中初始化
-        self.alchemy_sys = None  # 在on_loaded中初始化
-        self.refining_sys = None  # 在on_loaded中初始化
-        self.formation_sys = None  # 在on_loaded中初始化
-        self.talisman_sys = None  # 在on_loaded中初始化
+        self.profession_mgr = None
+        self.alchemy_sys = None
+        self.refining_sys = None
+        self.formation_sys = None
+        self.talisman_sys = None
 
-        logger.info("修仙世界插件已加载")
+        logger.info("修仙世界插件已加载 (使用懒加载模式)")
 
     @filter.on_astrbot_loaded()
     async def on_loaded(self):
-        """AstrBot加载完成钩子"""
-        # 初始化数据库
-        await self.db.init_db()
+        """AstrBot加载完成钩子（备用初始化）"""
+        logger.info("触发 on_astrbot_loaded 钩子")
+        await self._ensure_initialized()
 
-        # 初始化业务管理器
-        self.player_mgr = PlayerManager(self.db)
-        self.cultivation_sys = CultivationSystem(self.db, self.player_mgr)
-        self.breakthrough_sys = BreakthroughSystem(self.db, self.player_mgr)
-        self.combat_sys = CombatSystem(self.db, self.player_mgr)
-        self.equipment_sys = EquipmentSystem(self.db, self.player_mgr)
-        self.method_sys = CultivationMethodSystem(self.db, self.player_mgr)
-        self.sect_sys = SectSystem(self.db, self.player_mgr)
-        self.ai_generator = AIGenerator(self.db, self.player_mgr)
-        self.tribulation_sys = TribulationSystem(self.db, self.player_mgr)
+    async def _ensure_initialized(self):
+        """确保插件已初始化（懒加载模式）"""
+        if self._initialized:
+            return True
 
-        # 初始化职业系统
-        self.profession_mgr = ProfessionManager(self.db, self.player_mgr)
-        self.alchemy_sys = AlchemySystem(self.db, self.player_mgr, self.profession_mgr)
-        self.refining_sys = RefiningSystem(self.db, self.player_mgr, self.profession_mgr)
-        self.formation_sys = FormationSystem(self.db, self.player_mgr, self.profession_mgr)
-        self.talisman_sys = TalismanSystem(self.db, self.player_mgr, self.profession_mgr)
+        if self._initializing:
+            # 正在初始化中，等待
+            import asyncio
+            for _ in range(50):  # 最多等待5秒
+                if self._initialized:
+                    return True
+                await asyncio.sleep(0.1)
+            return False
 
-        # 注入天劫系统到突破系统
-        self.breakthrough_sys.set_tribulation_system(self.tribulation_sys)
+        self._initializing = True
 
-        # 初始化基础职业配方
-        await self.alchemy_sys.init_base_recipes()
-        await self.refining_sys.init_base_blueprints()
-        await self.formation_sys.init_base_formations()
-        await self.talisman_sys.init_base_talismans()
+        try:
+            logger.info("🔄 开始初始化修仙世界插件...")
 
-        logger.info("修仙世界插件初始化完成")
+            # 初始化数据库
+            logger.info("📦 正在初始化数据库...")
+            await self.db.init_db()
+            logger.info("✓ 数据库初始化完成")
+
+            # 初始化业务管理器
+            logger.info("⚙️ 正在初始化核心系统...")
+            self.player_mgr = PlayerManager(self.db)
+            self.cultivation_sys = CultivationSystem(self.db, self.player_mgr)
+            self.breakthrough_sys = BreakthroughSystem(self.db, self.player_mgr)
+            self.combat_sys = CombatSystem(self.db, self.player_mgr)
+            self.equipment_sys = EquipmentSystem(self.db, self.player_mgr)
+            self.method_sys = CultivationMethodSystem(self.db, self.player_mgr)
+            self.sect_sys = SectSystem(self.db, self.player_mgr)
+            self.ai_generator = AIGenerator(self.db, self.player_mgr)
+            self.tribulation_sys = TribulationSystem(self.db, self.player_mgr)
+            logger.info("✓ 核心系统初始化完成")
+
+            # 初始化职业系统
+            logger.info("🔨 正在初始化职业系统...")
+            self.profession_mgr = ProfessionManager(self.db, self.player_mgr)
+            self.alchemy_sys = AlchemySystem(self.db, self.player_mgr, self.profession_mgr)
+            self.refining_sys = RefiningSystem(self.db, self.player_mgr, self.profession_mgr)
+            self.formation_sys = FormationSystem(self.db, self.player_mgr, self.profession_mgr)
+            self.talisman_sys = TalismanSystem(self.db, self.player_mgr, self.profession_mgr)
+            logger.info("✓ 职业系统初始化完成")
+
+            # 注入天劫系统到突破系统
+            self.breakthrough_sys.set_tribulation_system(self.tribulation_sys)
+
+            # 初始化基础职业配方
+            logger.info("📚 正在加载基础配方...")
+            await self.alchemy_sys.init_base_recipes()
+            await self.refining_sys.init_base_blueprints()
+            await self.formation_sys.init_base_formations()
+            await self.talisman_sys.init_base_talismans()
+            logger.info("✓ 基础配方加载完成")
+
+            self._initialized = True
+            logger.info("=" * 60)
+            logger.info("✅ 修仙世界插件初始化完成！")
+            logger.info("=" * 60)
+            return True
+
+        except Exception as e:
+            logger.error("=" * 60)
+            logger.error(f"❌ 修仙世界插件初始化失败: {e}", exc_info=True)
+            logger.error("=" * 60)
+            self._initialized = False
+            return False
+        finally:
+            self._initializing = False
 
     async def terminate(self):
         """插件卸载时调用"""
@@ -132,15 +183,29 @@ class XiuxianPlugin(Star):
 
     # ========== 命令处理器 ==========
 
+    @filter.command("修仙初始化", alias={"xiuxian_init", "初始化"})
+    async def manual_init_cmd(self, event: AstrMessageEvent):
+        """手动初始化插件（调试用）"""
+        if self._initialized:
+            yield event.plain_result("✅ 修仙世界插件已经初始化完成")
+            return
+
+        yield event.plain_result("🔄 开始初始化修仙世界插件...")
+
+        if await self._ensure_initialized():
+            yield event.plain_result("✅ 初始化成功！现在可以使用 /修仙 创建角色了")
+        else:
+            yield event.plain_result("❌ 初始化失败，请查看日志获取详细错误信息")
+
     @filter.command("修仙", alias={"开始修仙", "创建角色"})
     async def create_character(self, event: AstrMessageEvent):
         """创建修仙角色"""
         user_id = event.get_sender_id()
 
         try:
-            # 检查插件是否已初始化
-            if not self._check_initialized():
-                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+            # 确保插件已初始化
+            if not await self._ensure_initialized():
+                yield event.plain_result("❌ 修仙世界初始化失败，请使用 /修仙初始化 命令查看详情")
                 return
 
             # 1. 检查是否已创建角色
@@ -202,9 +267,9 @@ class XiuxianPlugin(Star):
         user_id = event.get_sender_id()
 
         try:
-            # 检查插件是否已初始化
-            if not self._check_initialized():
-                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+            # 确保插件已初始化
+            if not await self._ensure_initialized():
+                yield event.plain_result("❌ 修仙世界初始化失败，请使用 /修仙初始化 命令查看详情")
                 return
 
             # 获取玩家信息
@@ -1813,6 +1878,9 @@ class XiuxianPlugin(Star):
         help_text = """
 【修仙世界 - 命令列表】
 
+系统命令:
+/修仙初始化 - 手动初始化插件(调试用)
+
 基础命令:
 /修仙 - 创建修仙角色
 /属性 - 查看角色信息
@@ -1888,9 +1956,9 @@ AI命令:
         user_id = event.get_sender_id()
 
         try:
-            # 检查插件是否已初始化
-            if not self._check_initialized():
-                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+            # 确保插件已初始化
+            if not await self._ensure_initialized():
+                yield event.plain_result("❌ 修仙世界初始化失败，请使用 /修仙初始化 命令查看详情")
                 return
 
             # 获取职业类型参数
