@@ -38,6 +38,9 @@ class DatabaseManager:
             # 创建表
             await self._create_tables()
 
+            # 执行数据库迁移（添加新字段）
+            await self._migrate_database()
+
             # 创建索引
             await self._create_indexes()
 
@@ -282,31 +285,9 @@ class DatabaseManager:
         """)
         logger.info("创建表: items")
 
-        # 功法表
-        await self.execute("""
-            CREATE TABLE IF NOT EXISTS cultivation_methods (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id TEXT,
-                name TEXT NOT NULL,
-                type TEXT NOT NULL,
-                rank TEXT DEFAULT '凡阶',
-                quality TEXT DEFAULT '普通',
-                element TEXT,
-                level INTEGER DEFAULT 1,
-                proficiency INTEGER DEFAULT 0,
-                cultivation_speed_bonus REAL DEFAULT 0,
-                combat_power_bonus REAL DEFAULT 0,
-                special_effects TEXT,
-                description TEXT,
-                source TEXT,
-                is_ai_generated BOOLEAN DEFAULT 0,
-                is_equipped BOOLEAN DEFAULT 0,
-                equipped_slot TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (user_id) REFERENCES players(user_id)
-            )
-        """)
-        logger.info("创建表: cultivation_methods")
+        # 注意: cultivation_methods 表由 CultivationMethodSystem 自行管理
+        # 见 core/cultivation_method.py::_ensure_methods_table()
+        # 该系统使用独立的表结构定义以支持更复杂的功法系统功能
 
         # 宗门表
         await self.execute("""
@@ -426,6 +407,61 @@ class DatabaseManager:
             await self.execute(index_sql)
 
         logger.info("索引创建完成")
+
+    async def _migrate_database(self):
+        """数据库迁移：为现有表添加新字段"""
+        try:
+            logger.info("开始检查数据库迁移...")
+
+            # 检查 players 表是否需要添加闭关相关字段
+            await self._add_column_if_not_exists(
+                "players",
+                "in_retreat",
+                "INTEGER DEFAULT 0"
+            )
+            await self._add_column_if_not_exists(
+                "players",
+                "retreat_start",
+                "TIMESTAMP"
+            )
+            await self._add_column_if_not_exists(
+                "players",
+                "retreat_duration",
+                "INTEGER DEFAULT 0"
+            )
+
+            logger.info("数据库迁移完成")
+
+        except Exception as e:
+            logger.error(f"数据库迁移失败: {e}", exc_info=True)
+            # 迁移失败不应该中断初始化，只记录错误
+            pass
+
+    async def _add_column_if_not_exists(self, table_name: str, column_name: str, column_type: str):
+        """
+        如果列不存在，则添加列
+
+        Args:
+            table_name: 表名
+            column_name: 列名
+            column_type: 列类型和约束
+        """
+        try:
+            # 检查列是否存在
+            table_info = await self.get_table_info(table_name)
+            column_exists = any(col['name'] == column_name for col in table_info)
+
+            if not column_exists:
+                # 添加列
+                sql = f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}"
+                await self.execute(sql)
+                logger.info(f"添加列: {table_name}.{column_name}")
+            else:
+                logger.debug(f"列已存在: {table_name}.{column_name}")
+
+        except Exception as e:
+            logger.error(f"添加列失败 {table_name}.{column_name}: {e}")
+            raise
 
     async def execute(
         self,
