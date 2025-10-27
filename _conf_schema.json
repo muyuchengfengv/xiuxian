@@ -1,0 +1,25 @@
+{
+  "ai_provider": {
+    "type": "string",
+    "description": "AI提供商",
+    "hint": "openai/anthropic/deepseek等,留空使用AstrBot全局配置",
+    "default": ""
+  },
+  "cultivation_cooldown": {
+    "type": "int",
+    "description": "修炼冷却时间(秒)",
+    "default": 3600,
+    "hint": "每次修炼间隔时间"
+  },
+  "initial_spirit_stone": {
+    "type": "int",
+    "description": "初始灵石数量",
+    "default": 1000
+  },
+  "enable_ai_generation": {
+    "type": "bool",
+    "description": "启用AI内容生成",
+    "default": true,
+    "hint": "关闭后使用预设内容,节省AI调用"
+  }
+}
