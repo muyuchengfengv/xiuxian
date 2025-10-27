@@ -276,10 +276,10 @@ class XiuxianPlugin(Star):
             spirit_info = MessageFormatter.format_spirit_root_info(player)
 
             result_text = (
-                f"恭喜！道友 {name} 已踏上修仙之路！\n\n"
-                f"{player_info}\n\n"
-                f"{spirit_info}\n\n"
-                f"💡 提示：使用 /修炼 开始修炼，使用 /修仙帮助 查看所有命令"
+                f"🎉{name}踏上修仙之路！\n"
+                f"{player_info}\n"
+                f"{spirit_info}\n"
+                f"💡/修炼 开始修炼 | /修仙帮助 查看命令"
             )
 
             yield event.plain_result(result_text)
@@ -315,31 +315,30 @@ class XiuxianPlugin(Star):
 
             # 冷却信息
             if cult_info['can_cultivate']:
-                extra_info.append("✅ 可以修炼")
-                extra_info.append(f"💡 预计获得修为: {cult_info['next_cultivation_gain']}")
+                extra_info.append(f"✅可修炼 预计+{cult_info['next_cultivation_gain']}")
             else:
                 hours = cult_info['cooldown_remaining'] // 3600
                 minutes = (cult_info['cooldown_remaining'] % 3600) // 60
                 seconds = cult_info['cooldown_remaining'] % 60
                 time_str = ""
                 if hours > 0:
-                    time_str += f"{hours}小时"
+                    time_str += f"{hours}h"
                 if minutes > 0:
-                    time_str += f"{minutes}分钟"
+                    time_str += f"{minutes}m"
                 if seconds > 0 or not time_str:
-                    time_str += f"{seconds}秒"
-                extra_info.append(f"⏰ 修炼冷却中，还需 {time_str}")
+                    time_str += f"{seconds}s"
+                extra_info.append(f"⏰冷却{time_str}")
 
             # 突破信息
             if cult_info['can_breakthrough']:
                 next_realm = cult_info['next_realm']['name']
-                extra_info.append(f"⚡ 可以突破至 {next_realm}！使用 /突破 进行突破")
+                extra_info.append(f"⚡可突破至{next_realm} /突破")
 
             result_text = player_info
             if extra_info:
-                result_text += "\n\n" + "\n".join(extra_info)
+                result_text += "\n" + "\n".join(extra_info)
 
-            result_text += "\n\n💡 使用 /灵根 查看灵根详情"
+            result_text += "\n💡/灵根 查看灵根详情"
 
             yield event.plain_result(result_text)
 
@@ -390,18 +389,14 @@ class XiuxianPlugin(Star):
 
             # 构建结果消息
             message_lines = [
-                "✨ 修炼完成！",
-                "",
-                f"📈 获得修为：+{result['cultivation_gained']}",
-                f"📊 当前修为：{result['total_cultivation']}",
+                f"✨修炼完成 +{result['cultivation_gained']}修为",
+                f"📊当前 {result['total_cultivation']}"
             ]
 
             # 检查是否可以突破
             if result['can_breakthrough']:
-                message_lines.append("")
-                message_lines.append(f"⚡ 恭喜！道友已可突破至 {result['next_realm']}！")
-                message_lines.append(f"   所需修为：{result['required_cultivation']}")
-                message_lines.append(f"💡 使用 /突破 尝试突破境界")
+                message_lines.append(f"⚡可突破至{result['next_realm']} 需{result['required_cultivation']}")
+                message_lines.append(f"💡/突破 进行突破")
 
             result_text = "\n".join(message_lines)
             yield event.plain_result(result_text)
@@ -411,7 +406,7 @@ class XiuxianPlugin(Star):
         except PlayerNotFoundError as e:
             yield event.plain_result(str(e))
         except CooldownNotReadyError as e:
-            yield event.plain_result(f"⏰ {str(e)}\n\n💡 使用 /属性 查看冷却时间")
+            yield event.plain_result(f"⏰{str(e)}\n💡/属性 查看冷却")
         except Exception as e:
             logger.error(f"修炼失败: {e}", exc_info=True)
             yield event.plain_result(f"修炼失败：{str(e)}")
@@ -607,21 +602,13 @@ class XiuxianPlugin(Star):
             combat_stats = await self.combat_sys.get_combat_stats(user_id)
 
             # 格式化战力信息
+            realm_level = combat_stats.get('realm_level_name', '')
             power_lines = [
-                "⚔️ 战力信息",
-                "─" * 30,
-                f"👤 道号：{player.name}",
-                f"🏆 战力：{power}",
-                f"🎯 境界：{player.realm} {combat_stats['realm_level_name'] if 'realm_level_name' in combat_stats else ''}",
-                "",
-                "📊 属性详情：",
-                f"   ❤️ 生命值：{player.hp}/{player.max_hp}",
-                f"   💙 法力值：{player.mp}/{player.max_mp}",
-                f"   ⚔️ 攻击力：{player.attack}",
-                f"   🛡️ 防御力：{player.defense}",
-                f"   🍀 幸运值：{player.luck}",
-                "",
-                "💡 使用 /切磋 @玩家 发起切磋"
+                f"⚔️{player.name} | 战力{power}",
+                f"🎯{player.realm}{realm_level}",
+                f"❤️{player.hp}/{player.max_hp} 💙{player.mp}/{player.max_mp}",
+                f"⚔️攻{player.attack} 🛡️防{player.defense} 🍀运{player.luck}",
+                "💡/切磋 @玩家"
             ]
 
             yield event.plain_result("\n".join(power_lines))
@@ -1889,79 +1876,19 @@ class XiuxianPlugin(Star):
     @filter.command("修仙帮助", alias={"xiuxian", "help"})
     async def help_cmd(self, event: AstrMessageEvent):
         """显示帮助信息"""
-        help_text = """
-【修仙世界 - 命令列表】
-
-系统命令:
-/修仙初始化 - 手动初始化插件(调试用)
-
-基础命令:
-/修仙 [道号] - 创建修仙角色
-/属性 - 查看角色信息
-/灵根 - 查看灵根详情
-/修炼 - 进行修炼
-/突破 - 查看突破信息
-/突破 确认 - 执行境界突破
-
-天劫命令:
-/渡劫 - 开始渡劫或继续渡劫
-/天劫信息 - 查看当前天劫信息
-/天劫历史 - 查看天劫历史记录
-/天劫统计 - 查看天劫统计信息
-
-功法命令:
-/功法 - 查看功法簿
-/已装备功法 - 查看已装备功法
-/功法装备 [编号] [槽位] - 装备功法
-/功法卸下 [槽位] - 卸下功法
-/功法详情 [编号] - 查看功法详情
-/获得功法 [类型] [品质] - 获得随机功法(测试)
-/功法帮助 - 功法使用说明
-
-宗门命令:
-/创建宗门 [名称] [描述] - 创建新宗门
-/宗门信息 - 查看宗门详情
-/加入宗门 [名称] - 加入指定宗门
-/离开宗门 - 查看离开提示
-/离开宗门 确认 - 确认离开宗门
-/宗门列表 - 查看所有宗门
-/宗门捐献 [数量] - 捐献灵石给宗门
-/宗门帮助 - 宗门使用说明
-
-战斗命令:
-/切磋 @用户 - 与其他玩家切磋
-/战力 - 查看战力信息
-
-装备命令:
-/背包 - 查看装备
-/装备 [编号] - 穿戴装备
-/卸下 [槽位] - 卸下装备
-/获得装备 [类型] - 获得随机装备(测试)
-
-职业命令:
-/学习职业 [职业类型] - 学习新职业(炼丹师/炼器师/阵法师/符箓师)
-/我的职业 - 查看已学习职业
-/炼丹 [编号] - 炼制丹药
-/丹方列表 - 查看可用丹方
-/炼器 [编号] - 炼制装备
-/图纸列表 - 查看可用图纸
-/强化装备 [装备ID] - 强化装备
-/布阵 [编号] - 布置阵法
-/阵法列表 - 查看可用阵法
-/查看阵法 - 查看当前位置活跃阵法
-/破阵 [编号] [方法] - 破解阵法
-/制符 [编号] [数量] - 制作符箓
-/符箓列表 - 查看可用符箓配方
-/我的符箓 - 查看拥有的符箓
-/使用符箓 [符箓名] - 使用符箓
-
-AI命令:
-/AI生成 [类型] - AI生成内容
-/AI历史 - 查看生成历史
-/AI帮助 - AI使用说明
-
-提示: 更多功能正在开发中...
-        """.strip()
+        help_text = """📖修仙世界命令
+基础: /修仙[道号] /属性 /灵根 /修炼 /突破
+战斗: /切磋@用户 /战力
+装备: /背包 /装备[#] /卸下[槽位]
+职业: /学习职业[类型] /我的职业
+炼丹: /丹方列表 /炼丹[#]
+炼器: /图纸列表 /炼器[#]
+阵法: /阵法列表 /布阵[#]
+符箓: /符箓列表 /制符[#][量] /我的符箓
+宗门: /宗门列表 /加入宗门[名] /宗门信息
+天劫: /渡劫 /天劫信息 /天劫历史
+功法: /功法 /功法装备[#][槽] /已装备功法
+详细:/功法帮助 /宗门帮助 /AI帮助""".strip()
         yield event.plain_result(help_text)
 
     # ========== 职业系统命令 ==========
