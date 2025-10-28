@@ -121,6 +121,8 @@ class DatabaseManager:
                         logger.info(f"已还原表: {table} ({', '.join(common_columns)})")
                     else:
                         logger.warning(f"表 {table} 没有共同列，跳过还原")
+                except Exception as e:
+                    logger.error(f"还原表 {table} 失败: {e}")
 
         # 删除备份表
         for table in tables_to_restore:
