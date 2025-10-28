@@ -188,9 +188,109 @@ class SectSystem:
         )
         await self._save_member(member)
 
+        # 添加初始基础功法（练气-元婴期）
+        await self._init_sect_base_methods(sect.id)
+
         logger.info(f"玩家 {player.name} 创建宗门: {name}")
 
         return sect
+
+    async def _init_sect_base_methods(self, sect_id: str):
+        """为新宗门初始化基础功法"""
+        import json
+
+        base_methods = [
+            # 练气期功法
+            {
+                "method_id": f"sect_base_qi_{sect_id}",
+                "method_name": "基础练气诀",
+                "method_type": "心法",
+                "method_quality": "凡品",
+                "required_contribution": 0,
+                "required_position": "弟子",
+                "description": "最基础的练气功法"
+            },
+            # 筑基期功法
+            {
+                "method_id": f"sect_base_foundation_{sect_id}",
+                "method_name": "筑基心法",
+                "method_type": "心法",
+                "method_quality": "灵品",
+                "required_contribution": 100,
+                "required_position": "弟子",
+                "description": "筑基期修炼功法"
+            },
+            # 金丹期功法
+            {
+                "method_id": f"sect_base_golden_{sect_id}",
+                "method_name": "金丹真诀",
+                "method_type": "心法",
+                "method_quality": "灵品",
+                "required_contribution": 300,
+                "required_position": "精英弟子",
+                "description": "金丹期修炼功法"
+            },
+            # 元婴期功法
+            {
+                "method_id": f"sect_base_nascent_{sect_id}",
+                "method_name": "元婴神功",
+                "method_type": "心法",
+                "method_quality": "宝品",
+                "required_contribution": 500,
+                "required_position": "执事",
+                "description": "元婴期修炼功法"
+            },
+            # 基础剑法
+            {
+                "method_id": f"sect_base_sword_{sect_id}",
+                "method_name": "基础剑诀",
+                "method_type": "剑法",
+                "method_quality": "凡品",
+                "required_contribution": 50,
+                "required_position": "弟子",
+                "description": "最基础的剑法"
+            },
+            # 基础掌法
+            {
+                "method_id": f"sect_base_palm_{sect_id}",
+                "method_name": "基础掌法",
+                "method_type": "掌法",
+                "method_quality": "凡品",
+                "required_contribution": 50,
+                "required_position": "弟子",
+                "description": "最基础的掌法"
+            },
+        ]
+
+        await self._ensure_sect_methods_table()
+
+        for method in base_methods:
+            required_position_level = self.POSITIONS.get(method["required_position"], {}).get("level", 1)
+
+            await self.db.execute(
+                """
+                INSERT INTO sect_methods (
+                    sect_id, method_id, method_name, method_type, method_quality,
+                    required_contribution, required_position, required_position_level,
+                    donated_by, added_at, learn_count
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    sect_id,
+                    method["method_id"],
+                    method["method_name"],
+                    method["method_type"],
+                    method["method_quality"],
+                    method["required_contribution"],
+                    method["required_position"],
+                    required_position_level,
+                    None,  # 系统初始化，无捐献者
+                    datetime.now().isoformat(),
+                    0
+                )
+            )
+
+        logger.info(f"宗门 {sect_id} 初始化 {len(base_methods)} 个基础功法")
 
     async def join_sect(self, user_id: str, sect_id: str) -> SectMember:
         """

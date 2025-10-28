@@ -61,6 +61,113 @@ class MarketSystem:
     async def initialize(self):
         """初始化数据库表（在主程序中调用）"""
         await self._ensure_market_tables()
+        await self._init_npc_items()
+
+    async def _init_npc_items(self):
+        """初始化NPC上架的基础物品"""
+        import json
+
+        # 检查是否已经初始化过
+        existing = await self.db.fetchone(
+            "SELECT id FROM market_items WHERE seller_id = 'npc' LIMIT 1"
+        )
+
+        if existing:
+            return  # 已经初始化过，不重复添加
+
+        logger.info("正在初始化NPC坊市物品...")
+
+        npc_items = [
+            # 基础丹药
+            {
+                "item_type": "pill",
+                "item_id": "npc_pill_1",
+                "item_name": "回春丹",
+                "quality": "凡品",
+                "description": "恢复少量生命值的基础丹药",
+                "price": 50,
+                "quantity": 99,
+                "attributes": json.dumps({"hp_restore": 100})
+            },
+            {
+                "item_type": "pill",
+                "item_id": "npc_pill_2",
+                "item_name": "聚气丹",
+                "quality": "灵品",
+                "description": "提升修为的基础丹药",
+                "price": 200,
+                "quantity": 50,
+                "attributes": json.dumps({"cultivation": 50})
+            },
+            {
+                "item_type": "pill",
+                "item_id": "npc_pill_3",
+                "item_name": "凝神丹",
+                "quality": "灵品",
+                "description": "恢复大量生命值",
+                "price": 300,
+                "quantity": 30,
+                "attributes": json.dumps({"hp_restore": 500})
+            },
+            # 基础材料
+            {
+                "item_type": "material",
+                "item_id": "npc_mat_1",
+                "item_name": "灵草",
+                "quality": "凡品",
+                "description": "炼丹的基础材料",
+                "price": 20,
+                "quantity": 999,
+                "attributes": json.dumps({"type": "herb"})
+            },
+            {
+                "item_type": "material",
+                "item_id": "npc_mat_2",
+                "item_name": "玄铁",
+                "quality": "凡品",
+                "description": "炼器的基础材料",
+                "price": 30,
+                "quantity": 999,
+                "attributes": json.dumps({"type": "metal"})
+            },
+            {
+                "item_type": "material",
+                "item_id": "npc_mat_3",
+                "item_name": "灵石碎片",
+                "quality": "灵品",
+                "description": "蕴含灵力的石头碎片",
+                "price": 100,
+                "quantity": 200,
+                "attributes": json.dumps({"type": "spirit"})
+            },
+        ]
+
+        for item in npc_items:
+            listing_id = str(uuid.uuid4())
+            await self.db.execute(
+                """
+                INSERT INTO market_items (
+                    id, seller_id, item_type, item_id, item_name, quality,
+                    description, price, quantity, attributes, status, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    listing_id,
+                    "npc",
+                    item["item_type"],
+                    item["item_id"],
+                    item["item_name"],
+                    item["quality"],
+                    item["description"],
+                    item["price"],
+                    item["quantity"],
+                    item["attributes"],
+                    "active",
+                    datetime.now().isoformat()
+                )
+            )
+
+        logger.info(f"NPC坊市物品初始化完成，共上架 {len(npc_items)} 种物品")
 
     async def list_item(self, user_id: str, item_type: str, item_id: str,
                        price: int, quantity: int = 1) -> Dict:
