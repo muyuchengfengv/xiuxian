@@ -70,7 +70,8 @@ class DatabaseManager:
             "crafting_logs", "tools", "profession_skills", "active_formations",
             "items", "sects", "sect_members", "ai_generation_history",
             "tribulations", "profession_exams", "locations", "player_locations",
-            "cultivation_methods", "player_cultivation_methods", "method_skills"
+            "cultivation_methods", "player_cultivation_methods", "method_skills",
+            "market_items", "market_transactions"
         ]
         
         for table in tables_to_backup:
@@ -96,7 +97,8 @@ class DatabaseManager:
             "crafting_logs", "tools", "profession_skills", "active_formations",
             "items", "sects", "sect_members", "ai_generation_history",
             "tribulations", "profession_exams", "locations", "player_locations",
-            "cultivation_methods", "player_cultivation_methods", "method_skills"
+            "cultivation_methods", "player_cultivation_methods", "method_skills",
+            "market_items", "market_transactions"
         ]
         
         for table in tables_to_restore:
@@ -141,7 +143,8 @@ class DatabaseManager:
             "crafting_logs", "tools", "profession_skills", "active_formations",
             "items", "sects", "sect_members", "ai_generation_history",
             "tribulations", "profession_exams", "locations", "player_locations",
-            "cultivation_methods", "player_cultivation_methods", "method_skills"
+            "cultivation_methods", "player_cultivation_methods", "method_skills",
+            "market_items", "market_transactions"
         ]
         
         for table in tables_to_drop:
