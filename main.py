@@ -30,6 +30,9 @@ from .core.formation import FormationSystem, FormationError, FormationPatternNot
 from .core.talisman import TalismanSystem, TalismanError, TalismanPatternNotFoundError
 from .core.items import ItemManager, ItemError, ItemNotFoundError, InsufficientItemError, ItemCannotUseError
 
+# 导入坊市系统模块
+from .core.market import MarketSystem, MarketError, ItemNotOwnedError, ItemNotTradableError, ListingNotFoundError, InsufficientSpiritStoneError
+
 # 导入工具类
 from .utils import (
     MessageFormatter,
@@ -95,6 +98,9 @@ class XiuxianPlugin(Star):
         # 物品系统管理器
         self.item_mgr = None
 
+        # 坊市系统管理器
+        self.market_sys = None
+
         logger.info("修仙世界插件已加载 (使用懒加载模式)")
 
     @filter.on_astrbot_loaded()
@@ -157,6 +163,12 @@ class XiuxianPlugin(Star):
             self.item_mgr = ItemManager(self.db, self.player_mgr)
             logger.info("✓ 物品系统初始化完成")
 
+            # 初始化坊市系统
+            logger.info("🏪 正在初始化坊市系统...")
+            self.market_sys = MarketSystem(self.db, self.player_mgr, self.item_mgr)
+            await self.market_sys.initialize()
+            logger.info("✓ 坊市系统初始化完成")
+
             # 注入天劫系统到突破系统
             self.breakthrough_sys.set_tribulation_system(self.tribulation_sys)
 
@@ -167,6 +179,18 @@ class XiuxianPlugin(Star):
             await self.formation_sys.init_base_formations()
             await self.talisman_sys.init_base_talismans()
             logger.info("✓ 基础配方加载完成")
+
+            # 初始化宗门系统
+            logger.info("🏛️ 正在初始化宗门系统...")
+            await self.sect_sys.init_base_tasks()
+            logger.info("✓ 宗门任务初始化完成")
+
+            # 注入宗门系统到其他系统（用于加成计算）
+            logger.info("🔗 正在连接系统...")
+            self.cultivation_sys.set_sect_system(self.sect_sys)
+            self.alchemy_sys.set_sect_system(self.sect_sys)
+            self.refining_sys.set_sect_system(self.sect_sys)
+            logger.info("✓ 系统连接完成")
 
             self._initialized = True
             logger.info("=" * 60)
@@ -413,11 +437,26 @@ class XiuxianPlugin(Star):
             # 执行修炼
             result = await self.cultivation_sys.cultivate(user_id)
 
+            # 更新宗门任务进度
+            try:
+                task_updates = await self.sect_sys.update_task_progress(user_id, 'cultivation', 1)
+                if task_updates:
+                    for task_update in task_updates:
+                        if task_update['completed']:
+                            logger.info(f"玩家 {user_id} 完成宗门任务: {task_update['task_name']}")
+            except Exception as e:
+                # 任务更新失败不影响修炼
+                logger.warning(f"更新宗门任务进度失败: {e}")
+
             # 构建结果消息
             message_lines = [
                 f"✨修炼完成 +{result['cultivation_gained']}修为",
                 f"📊当前 {result['total_cultivation']}"
             ]
+
+            # 显示宗门加成
+            if result.get('sect_bonus_rate', 0) > 0:
+                message_lines.append(f"🏛️宗门加成 +{result['sect_bonus_rate']*100:.0f}%")
 
             # 检查是否可以突破
             if result['can_breakthrough']:
@@ -2208,6 +2247,419 @@ class XiuxianPlugin(Star):
             logger.error(f"宗门捐献失败: {e}", exc_info=True)
             yield event.plain_result(f"宗门捐献失败：{str(e)}")
 
+    @filter.command("宗门功法", alias={"sect_methods", "功法库"})
+    async def sect_methods_cmd(self, event: AstrMessageEvent):
+        """查看宗门功法库"""
+        user_id = event.get_sender_id()
+
+        try:
+            # 检查插件是否已初始化
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
+            # 获取玩家所在宗门
+            member = await self.sect_sys.get_sect_member(user_id)
+            if not member:
+                yield event.plain_result("⚠️ 道友尚未加入任何宗门")
+                return
+
+            # 获取宗门信息
+            sect = await self.sect_sys.get_sect_by_id(member.sect_id)
+
+            # 获取宗门功法列表
+            methods = await self.sect_sys.get_sect_methods(sect.id, user_id)
+
+            if not methods:
+                yield event.plain_result(
+                    f"📚 {sect.name} - 功法库\n\n"
+                    f"⚠️ 宗门功法库空空如也\n\n"
+                    f"💡 使用 /捐献功法 [编号] 捐献功法给宗门"
+                )
+                return
+
+            # 格式化显示
+            lines = [f"📚 {sect.name} - 功法库", ""]
+
+            for i, method in enumerate(methods, 1):
+                learned_mark = "✅" if method['learned'] else "⭕"
+                lines.append(
+                    f"{i}. {learned_mark} {method['method_name']} ({method['method_quality']})"
+                )
+                lines.append(f"   类型：{method['method_type']}")
+                lines.append(
+                    f"   要求：{method['required_position']} | "
+                    f"贡献度 {method['required_contribution']}"
+                )
+                lines.append(f"   学习次数：{method['learn_count']}次")
+                lines.append("")
+
+            lines.append(f"🎓 您的贡献度：{member.contribution}")
+            lines.append(f"📋 您的职位：{member.position}")
+            lines.append("")
+            lines.append("💡 使用 /学习功法 [编号] 学习功法")
+
+            yield event.plain_result("\n".join(lines))
+
+        except Exception as e:
+            logger.exception("查看宗门功法库失败")
+            yield event.plain_result(f"查看宗门功法库失败：{str(e)}")
+
+    @filter.command("学习功法", alias={"learn_method", "学功法"})
+    async def learn_sect_method_cmd(self, event: AstrMessageEvent):
+        """学习宗门功法"""
+        user_id = event.get_sender_id()
+        message_text = self._get_message_text(event)
+
+        try:
+            # 检查插件是否已初始化
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
+            # 解析参数
+            parts = message_text.strip().split()
+            if len(parts) < 2:
+                yield event.plain_result(
+                    "❌ 参数不足\n\n"
+                    "📖 使用方法：/学习功法 [编号]\n"
+                    "💡 使用 /宗门功法 查看功法库"
+                )
+                return
+
+            try:
+                method_index = int(parts[1]) - 1
+            except ValueError:
+                yield event.plain_result("❌ 编号必须是数字")
+                return
+
+            # 获取玩家所在宗门
+            member = await self.sect_sys.get_sect_member(user_id)
+            if not member:
+                yield event.plain_result("⚠️ 道友尚未加入任何宗门")
+                return
+
+            # 获取宗门功法列表
+            methods = await self.sect_sys.get_sect_methods(member.sect_id, user_id)
+
+            if method_index < 0 or method_index >= len(methods):
+                yield event.plain_result(f"❌ 编号无效，请输入1-{len(methods)}之间的数字")
+                return
+
+            selected_method = methods[method_index]
+
+            # 检查是否已学习
+            if selected_method['learned']:
+                yield event.plain_result(f"⚠️ 您已经学习过 {selected_method['method_name']}")
+                return
+
+            # 学习功法
+            result = await self.sect_sys.learn_sect_method(
+                user_id,
+                selected_method['id'],
+                self.method_sys
+            )
+
+            yield event.plain_result(
+                f"🎓 学习成功！\n\n"
+                f"📖 功法：{result['method_name']}\n"
+                f"⭐ 品质：{result['method_quality']}\n"
+                f"🔷 类型：{result['method_type']}\n\n"
+                f"💰 消耗贡献度：{result['contribution_cost']}\n"
+                f"🎁 剩余贡献度：{result['remaining_contribution']}\n\n"
+                f"💡 使用 /功法列表 查看已学功法"
+            )
+
+        except Exception as e:
+            logger.exception("学习宗门功法失败")
+            yield event.plain_result(f"学习宗门功法失败：{str(e)}")
+
+    @filter.command("捐献功法", alias={"donate_method", "功法捐献"})
+    async def donate_method_cmd(self, event: AstrMessageEvent):
+        """捐献功法到宗门"""
+        user_id = event.get_sender_id()
+        message_text = self._get_message_text(event)
+
+        try:
+            # 检查插件是否已初始化
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
+            # 解析参数
+            parts = message_text.strip().split()
+            if len(parts) < 2:
+                yield event.plain_result(
+                    "❌ 参数不足\n\n"
+                    "📖 使用方法：/捐献功法 [编号]\n"
+                    "💡 使用 /功法列表 查看您的功法"
+                )
+                return
+
+            try:
+                method_index = int(parts[1]) - 1
+            except ValueError:
+                yield event.plain_result("❌ 编号必须是数字")
+                return
+
+            # 获取玩家功法列表
+            methods = await self.method_sys.get_player_methods(user_id)
+
+            if method_index < 0 or method_index >= len(methods):
+                yield event.plain_result(f"❌ 编号无效，请输入1-{len(methods)}之间的数字")
+                return
+
+            selected_method = methods[method_index]
+
+            # 捐献功法
+            result = await self.sect_sys.donate_method_to_sect(
+                user_id,
+                selected_method.id,
+                self.method_sys
+            )
+
+            yield event.plain_result(
+                f"🎁 捐献成功！\n\n"
+                f"📖 功法：{result['method_name']}\n"
+                f"⭐ 品质：{result['method_quality']}\n\n"
+                f"🎖️ 获得贡献度：+{result['contribution_reward']}\n"
+                f"💎 总贡献度：{result['total_contribution']}\n\n"
+                f"💡 功法已添加到宗门功法库"
+            )
+
+        except Exception as e:
+            logger.exception("捐献功法失败")
+            yield event.plain_result(f"捐献功法失败：{str(e)}")
+
+    @filter.command("宗门任务", alias={"sect_tasks", "宗门quest"})
+    async def sect_tasks_cmd(self, event: AstrMessageEvent):
+        """查看宗门任务"""
+        user_id = event.get_sender_id()
+
+        try:
+            # 检查插件是否已初始化
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
+            # 获取可接取任务
+            tasks = await self.sect_sys.get_available_tasks(user_id)
+
+            if not tasks:
+                yield event.plain_result("⚠️ 当前没有可用任务")
+                return
+
+            # 按类型分组
+            daily_tasks = [t for t in tasks if t['task_type'] == 'daily']
+            weekly_tasks = [t for t in tasks if t['task_type'] == 'weekly']
+
+            lines = ["📋 宗门任务", ""]
+
+            # 每日任务
+            if daily_tasks:
+                lines.append("📅 每日任务：")
+                for i, task in enumerate(daily_tasks, 1):
+                    status = ""
+                    if task['is_accepted']:
+                        if task['status'] == 'completed':
+                            status = "✅ 已完成"
+                        else:
+                            status = f"⏳ 进行中 ({task['progress']}/{task['target']})"
+                    else:
+                        status = "⭕ 可接取"
+
+                    lines.append(f"\n{i}. {task['task_name']} - {status}")
+                    lines.append(f"   📝 {task['task_description']}")
+                    lines.append(
+                        f"   🎁 奖励：贡献度+{task['contribution_reward']} | "
+                        f"灵石+{task['spirit_stone_reward']} | "
+                        f"经验+{task['exp_reward']}"
+                    )
+
+            # 每周任务
+            if weekly_tasks:
+                lines.append("\n\n📆 每周任务：")
+                for i, task in enumerate(weekly_tasks, len(daily_tasks) + 1):
+                    status = ""
+                    if task['is_accepted']:
+                        if task['status'] == 'completed':
+                            status = "✅ 已完成"
+                        else:
+                            status = f"⏳ 进行中 ({task['progress']}/{task['target']})"
+                    else:
+                        status = "⭕ 可接取"
+
+                    lines.append(f"\n{i}. {task['task_name']} - {status}")
+                    lines.append(f"   📝 {task['task_description']}")
+                    lines.append(
+                        f"   🎁 奖励：贡献度+{task['contribution_reward']} | "
+                        f"灵石+{task['spirit_stone_reward']} | "
+                        f"经验+{task['exp_reward']}"
+                    )
+
+            lines.append("\n\n💡 使用 /接取任务 [任务ID] 接取任务")
+            lines.append("💡 使用 /我的任务 查看已接取任务")
+
+            yield event.plain_result("\n".join(lines))
+
+        except Exception as e:
+            logger.exception("查看宗门任务失败")
+            yield event.plain_result(f"查看宗门任务失败：{str(e)}")
+
+    @filter.command("接取任务", alias={"accept_task", "接任务"})
+    async def accept_task_cmd(self, event: AstrMessageEvent):
+        """接取宗门任务"""
+        user_id = event.get_sender_id()
+        message_text = self._get_message_text(event)
+
+        try:
+            # 检查插件是否已初始化
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
+            # 解析参数
+            parts = message_text.strip().split()
+            if len(parts) < 2:
+                yield event.plain_result(
+                    "❌ 参数不足\n\n"
+                    "📖 使用方法：/接取任务 [任务ID]\n"
+                    "💡 使用 /宗门任务 查看可接取任务"
+                )
+                return
+
+            task_id = parts[1]
+
+            # 接取任务
+            result = await self.sect_sys.accept_task(user_id, task_id)
+
+            yield event.plain_result(
+                f"✅ 接取成功！\n\n"
+                f"📋 任务：{result['task_name']}\n"
+                f"📝 描述：{result['task_description']}\n"
+                f"🎯 目标：0/{result['target']}\n\n"
+                f"💡 任务进度会自动更新\n"
+                f"💡 完成后使用 /我的任务 查看并领取奖励"
+            )
+
+        except Exception as e:
+            logger.exception("接取任务失败")
+            yield event.plain_result(f"接取任务失败：{str(e)}")
+
+    @filter.command("我的任务", alias={"my_tasks", "任务列表"})
+    async def my_tasks_cmd(self, event: AstrMessageEvent):
+        """查看我的任务"""
+        user_id = event.get_sender_id()
+
+        try:
+            # 检查插件是否已初始化
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
+            # 获取任务列表
+            tasks = await self.sect_sys.get_member_tasks(user_id)
+
+            if not tasks:
+                yield event.plain_result(
+                    "📋 我的任务\n\n"
+                    "⚠️ 您还没有接取任何任务\n\n"
+                    "💡 使用 /宗门任务 查看可接取任务"
+                )
+                return
+
+            lines = ["📋 我的任务", ""]
+
+            # 活跃任务
+            active_tasks = [t for t in tasks if t['status'] == 'active']
+            if active_tasks:
+                lines.append("⏳ 进行中：")
+                for i, task in enumerate(active_tasks, 1):
+                    progress_pct = (task['progress'] / task['target']) * 100
+                    lines.append(
+                        f"\n{i}. {task['task_name']} ({task['task_type']})"
+                    )
+                    lines.append(
+                        f"   📊 进度：{task['progress']}/{task['target']} ({progress_pct:.0f}%)"
+                    )
+                    lines.append(
+                        f"   🎁 奖励：贡献度+{task['contribution_reward']} | "
+                        f"灵石+{task['spirit_stone_reward']}"
+                    )
+
+            # 已完成任务
+            completed_tasks = [t for t in tasks if t['status'] == 'completed' and t['can_claim']]
+            if completed_tasks:
+                lines.append("\n\n✅ 可领取：")
+                for task in completed_tasks:
+                    lines.append(f"\n• {task['task_name']}")
+                    lines.append(f"  📦 任务ID：{task['id']}")
+                    lines.append(
+                        f"  🎁 奖励：贡献度+{task['contribution_reward']} | "
+                        f"灵石+{task['spirit_stone_reward']}"
+                    )
+                lines.append("\n💡 使用 /完成任务 [任务ID] 领取奖励")
+
+            # 已领取任务
+            claimed_tasks = [t for t in tasks if t['claimed_at']]
+            if claimed_tasks:
+                lines.append(f"\n\n🎉 已领取：{len(claimed_tasks)}个任务")
+
+            yield event.plain_result("\n".join(lines))
+
+        except Exception as e:
+            logger.exception("查看我的任务失败")
+            yield event.plain_result(f"查看我的任务失败：{str(e)}")
+
+    @filter.command("完成任务", alias={"complete_task", "领取奖励"})
+    async def complete_task_cmd(self, event: AstrMessageEvent):
+        """完成任务并领取奖励"""
+        user_id = event.get_sender_id()
+        message_text = self._get_message_text(event)
+
+        try:
+            # 检查插件是否已初始化
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
+            # 解析参数
+            parts = message_text.strip().split()
+            if len(parts) < 2:
+                yield event.plain_result(
+                    "❌ 参数不足\n\n"
+                    "📖 使用方法：/完成任务 [任务ID]\n"
+                    "💡 使用 /我的任务 查看可领取任务"
+                )
+                return
+
+            member_task_id = parts[1]
+
+            # 完成任务
+            result = await self.sect_sys.complete_task(user_id, member_task_id)
+
+            rewards = result['rewards']
+            lines = [
+                "🎉 任务完成！",
+                "",
+                f"📋 任务：{result['task_name']}",
+                "",
+                "🎁 获得奖励："
+            ]
+
+            if rewards['contribution'] > 0:
+                lines.append(f"   🎖️ 贡献度 +{rewards['contribution']}")
+            if rewards['spirit_stone'] > 0:
+                lines.append(f"   💎 灵石 +{rewards['spirit_stone']}")
+            if rewards['exp'] > 0:
+                lines.append(f"   ⭐ 经验 +{rewards['exp']}")
+
+            yield event.plain_result("\n".join(lines))
+
+        except Exception as e:
+            logger.exception("完成任务失败")
+            yield event.plain_result(f"完成任务失败：{str(e)}")
+
     @filter.command("宗门帮助", alias={"sect_help"})
     async def sect_help_cmd(self, event: AstrMessageEvent):
         """宗门系统帮助"""
@@ -2222,6 +2674,17 @@ class XiuxianPlugin(Star):
 /宗门列表 - 查看所有宗门
 /宗门捐献 [数量] - 捐献灵石给宗门
 
+📚 功法库系统：
+/宗门功法 - 查看宗门功法库
+/学习功法 [编号] - 学习宗门功法
+/捐献功法 [编号] - 捐献功法到宗门
+
+📋 任务系统：
+/宗门任务 - 查看可接取任务
+/接取任务 [任务ID] - 接取宗门任务
+/我的任务 - 查看已接取任务
+/完成任务 [任务ID] - 领取任务奖励
+
 👥 职位系统：
 宗主 👑 - 最高权限，可管理一切
 长老 🎖️ - 可升级建筑、管理成员
@@ -2231,19 +2694,21 @@ class XiuxianPlugin(Star):
 
 🏗️ 宗门建筑：
 大殿 - 宗门核心建筑
-藏经阁 - 提升功法获取率
-练功房 - 提升修炼效率
-炼丹房 - 提升丹药品质
-炼器房 - 提升装备品质
+藏经阁 - 提升功法品质 +5%/级
+练功房 - 提升修炼效率 +10%/级
+炼丹房 - 提升炼丹成功率 +8%/级
+炼器房 - 提升炼器成功率 +8%/级
 
 📈 宗门升级：
-捐献灵石可获得贡献度和宗门经验
-宗门升级可增加成员上限
-建筑升级需要消耗宗门灵石
+• 捐献灵石可获得贡献度和宗门经验
+• 宗门升级可增加成员上限
+• 建筑升级需要消耗宗门灵石
+• 贡献度可用于学习宗门功法
 
 💡 提示：
-• 加入宗门可获得各种加成
+• 加入宗门可获得建筑加成
 • 积极捐献可提升个人地位
+• 完成宗门任务获得丰厚奖励
 • 宗门越强，成员收益越高
         """.strip()
 
@@ -2757,18 +3222,21 @@ class XiuxianPlugin(Star):
         """显示帮助信息"""
         help_text = """📖修仙世界命令
 基础: /修仙[道号] /属性 /灵根 /突破
-修炼: /修炼 单次修炼 | /闭关[时长] /出关 /闭关信息
-战斗: /切磋@用户 /战力
-装备: /背包 /装备[#] /卸下[槽位]
+修炼: /修炼 单次修炼 | /修炼功法[#] /闭关[时长] /出关 /闭关信息
+战斗: /切磋@用户 /战力 /挑战[等级] /使用技能[技能名]
+装备: /背包 /装备[#] /卸下[槽位] /强化[#] /获得装备[类型]
+技能: /技能 /使用技能[技能名]
 世界: /地点 /地图 /前往[#] /探索 /地点详情
 职业: /学习职业[类型] /我的职业
 炼丹: /丹方列表 /炼丹[#]
 炼器: /图纸列表 /炼器[#]
 阵法: /阵法列表 /布阵[#]
 符箓: /符箓列表 /制符[#][量] /我的符箓
-宗门: /宗门列表 /加入宗门[名] /宗门信息
-天劫: /渡劫 /天劫信息 /天劫历史
-功法: /功法 /功法装备[#][槽] /已装备功法
+物品: /使用[物品名]
+宗门: /宗门列表 /加入宗门[名] /宗门信息 /宗门捐献[数量] /离开宗门
+天劫: /渡劫 /天劫信息 /天劫历史 /天劫统计
+功法: /功法 /功法装备[#][槽] /已装备功法 /功法详情[#] /获得功法[类型]
+AI: /AI生成[类型] /AI历史 /AI帮助
 详细:/功法帮助 /宗门帮助 /AI帮助""".strip()
         yield event.plain_result(help_text)
 
@@ -3153,3 +3621,334 @@ class XiuxianPlugin(Star):
         except Exception as e:
             logger.error(f"查看符箓失败: {e}", exc_info=True)
             yield event.plain_result(f"查看符箓失败：{str(e)}")
+
+    # ========== 坊市系统命令 ==========
+
+    @filter.command("坊市", alias={"market", "市场"})
+    async def market_cmd(self, event: AstrMessageEvent):
+        """查看坊市物品列表"""
+        user_id = event.get_sender_id()
+        try:
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
+            # 解析参数
+            text = self._get_message_text(event)
+            args = text.split()
+
+            # 类型筛选映射
+            type_mapping = {
+                "装备": "equipment",
+                "丹药": "pill",
+                "功法": "method",
+                "材料": "material"
+            }
+
+            item_type = None
+            if len(args) > 1:
+                item_type = type_mapping.get(args[1], args[1])
+
+            # 获取市场物品
+            items = await self.market_sys.get_market_items(item_type=item_type, page=1, page_size=20)
+
+            if not items:
+                yield event.plain_result(
+                    "🏪 坊市空空如也\n\n"
+                    "💡 使用 /上架 出售物品"
+                )
+                return
+
+            # 格式化显示
+            lines = ["🏪 修仙坊市", "─" * 40, ""]
+
+            for i, item in enumerate(items, 1):
+                quality_emoji = {
+                    '凡品': '⚪', '灵品': '🔵', '宝品': '🟣',
+                    '仙品': '🟡', '神品': '🔴', '道品': '⭐'
+                }.get(item['quality'], '⚪')
+
+                lines.append(
+                    f"{i}. {quality_emoji} {item['item_name']} x{item['quantity']}\n"
+                    f"   💎 价格: {item['price']} 灵石"
+                )
+
+            lines.extend([
+                "",
+                "💡 使用 /购买 [编号] 购买物品",
+                "💡 使用 /坊市 [类型] 筛选类型（装备/丹药/功法/材料）"
+            ])
+
+            yield event.plain_result("\n".join(lines))
+
+        except Exception as e:
+            logger.error(f"查看坊市失败: {e}", exc_info=True)
+            yield event.plain_result(f"查看坊市失败：{str(e)}")
+
+    @filter.command("上架", alias={"list_item", "出售"})
+    async def list_item_cmd(self, event: AstrMessageEvent):
+        """上架物品到坊市"""
+        user_id = event.get_sender_id()
+        try:
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
+            # 解析参数
+            text = self._get_message_text(event)
+            args = text.split()
+
+            if len(args) < 4:
+                yield event.plain_result(
+                    "🏪 上架物品到坊市\n" + "─" * 40 + "\n\n"
+                    "请指定物品类型、编号、价格和数量\n\n"
+                    "💡 使用方法: /上架 [类型] [编号] [价格] [数量]\n"
+                    "💡 例如: /上架 装备 1 1000\n"
+                    "💡 例如: /上架 丹药 2 500 10\n\n"
+                    "📋 支持类型:\n"
+                    "  装备 - 装备和法宝\n"
+                    "  丹药 - 各类丹药\n"
+                    "  功法 - 功法秘籍\n"
+                    "  材料 - 炼丹炼器材料"
+                )
+                return
+
+            # 类型映射
+            type_mapping = {
+                "装备": "equipment",
+                "丹药": "pill",
+                "功法": "method",
+                "材料": "material"
+            }
+
+            item_type_input = args[1]
+            item_type = type_mapping.get(item_type_input, item_type_input)
+
+            if item_type not in ["equipment", "pill", "method", "material"]:
+                yield event.plain_result("❌ 不支持的物品类型！\n\n💡 支持类型：装备、丹药、功法、材料")
+                return
+
+            # 解析编号和价格
+            try:
+                item_index = int(args[2])
+                price = int(args[3])
+                quantity = int(args[4]) if len(args) > 4 else 1
+            except ValueError:
+                yield event.plain_result("❌ 编号、价格和数量必须是数字！")
+                return
+
+            if price <= 0:
+                yield event.plain_result("❌ 价格必须大于0！")
+                return
+
+            # 获取物品ID（需要根据编号查询实际ID）
+            # 这里简化处理，实际应该从背包/装备列表获取
+            if item_type == "equipment":
+                equipment_list = await self.equipment_sys.get_player_equipment(user_id)
+                if item_index < 1 or item_index > len(equipment_list):
+                    yield event.plain_result(f"❌ 装备编号 {item_index} 不存在！")
+                    return
+                equipment = equipment_list[item_index - 1]
+                item_id = equipment.id
+            elif item_type == "method":
+                methods = await self.method_sys.get_player_methods(user_id)
+                if item_index < 1 or item_index > len(methods):
+                    yield event.plain_result(f"❌ 功法编号 {item_index} 不存在！")
+                    return
+                method = methods[item_index - 1]
+                item_id = method.id
+            else:
+                # 丹药和材料使用item_index作为item_id（简化处理）
+                item_id = str(item_index)
+
+            # 上架物品
+            result = await self.market_sys.list_item(user_id, item_type, item_id, price, quantity)
+
+            yield event.plain_result(
+                f"✅ 上架成功！\n\n"
+                f"物品：{result['item_name']} x{result['quantity']}\n"
+                f"价格：{result['price']} 灵石\n\n"
+                f"💡 使用 /我的上架 查看上架物品"
+            )
+
+        except PlayerNotFoundError:
+            yield event.plain_result("您还没有创建角色，请先使用 /修仙 创建角色")
+        except ItemNotOwnedError as e:
+            yield event.plain_result(f"❌ {str(e)}")
+        except ItemNotTradableError as e:
+            yield event.plain_result(f"⚠️ {str(e)}")
+        except Exception as e:
+            logger.error(f"上架物品失败: {e}", exc_info=True)
+            yield event.plain_result(f"上架失败：{str(e)}")
+
+    @filter.command("购买", alias={"buy", "购买物品"})
+    async def purchase_item_cmd(self, event: AstrMessageEvent):
+        """购买坊市物品"""
+        user_id = event.get_sender_id()
+        try:
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
+            # 解析参数
+            text = self._get_message_text(event)
+            args = text.split()
+
+            if len(args) < 2:
+                yield event.plain_result(
+                    "🏪 购买坊市物品\n" + "─" * 40 + "\n\n"
+                    "请指定要购买的物品编号\n\n"
+                    "💡 使用方法: /购买 [编号]\n"
+                    "💡 例如: /购买 1\n\n"
+                    "💡 使用 /坊市 查看可购买物品"
+                )
+                return
+
+            try:
+                item_index = int(args[1])
+            except ValueError:
+                yield event.plain_result("❌ 物品编号必须是数字！")
+                return
+
+            # 获取市场物品列表
+            items = await self.market_sys.get_market_items(page=1, page_size=20)
+
+            if item_index < 1 or item_index > len(items):
+                yield event.plain_result(f"❌ 物品编号 {item_index} 不存在！")
+                return
+
+            # 获取要购买的物品
+            item = items[item_index - 1]
+            listing_id = item['id']
+
+            # 执行购买
+            result = await self.market_sys.purchase_item(user_id, listing_id)
+
+            yield event.plain_result(
+                f"🎉 购买成功！\n\n"
+                f"物品：{result['item_name']} x{result['quantity']}\n"
+                f"价格：{result['price']} 灵石\n"
+                f"税费：{result['tax']} 灵石（5%）\n"
+                f"剩余灵石：{result['buyer_remaining']}\n\n"
+                f"💡 物品已放入背包"
+            )
+
+        except PlayerNotFoundError:
+            yield event.plain_result("您还没有创建角色，请先使用 /修仙 创建角色")
+        except ListingNotFoundError as e:
+            yield event.plain_result(f"❌ {str(e)}")
+        except InsufficientSpiritStoneError as e:
+            yield event.plain_result(f"💎 {str(e)}")
+        except ValueError as e:
+            yield event.plain_result(f"⚠️ {str(e)}")
+        except Exception as e:
+            logger.error(f"购买物品失败: {e}", exc_info=True)
+            yield event.plain_result(f"购买失败：{str(e)}")
+
+    @filter.command("下架", alias={"cancel_listing", "取消上架"})
+    async def cancel_listing_cmd(self, event: AstrMessageEvent):
+        """取消上架"""
+        user_id = event.get_sender_id()
+        try:
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
+            # 解析参数
+            text = self._get_message_text(event)
+            args = text.split()
+
+            if len(args) < 2:
+                yield event.plain_result(
+                    "🏪 取消上架\n" + "─" * 40 + "\n\n"
+                    "请指定要下架的物品编号\n\n"
+                    "💡 使用方法: /下架 [编号]\n"
+                    "💡 例如: /下架 1\n\n"
+                    "💡 使用 /我的上架 查看上架物品"
+                )
+                return
+
+            try:
+                item_index = int(args[1])
+            except ValueError:
+                yield event.plain_result("❌ 物品编号必须是数字！")
+                return
+
+            # 获取我的上架列表
+            my_listings = await self.market_sys.get_my_listings(user_id)
+
+            if item_index < 1 or item_index > len(my_listings):
+                yield event.plain_result(f"❌ 物品编号 {item_index} 不存在！")
+                return
+
+            # 获取要下架的物品
+            listing = my_listings[item_index - 1]
+            listing_id = listing['id']
+
+            # 执行下架
+            result = await self.market_sys.cancel_listing(user_id, listing_id)
+
+            yield event.plain_result(
+                f"✅ 下架成功！\n\n"
+                f"物品：{result['item_name']} x{result['quantity']}\n\n"
+                f"💡 物品已退回背包"
+            )
+
+        except PlayerNotFoundError:
+            yield event.plain_result("您还没有创建角色，请先使用 /修仙 创建角色")
+        except ListingNotFoundError as e:
+            yield event.plain_result(f"❌ {str(e)}")
+        except ValueError as e:
+            yield event.plain_result(f"⚠️ {str(e)}")
+        except Exception as e:
+            logger.error(f"下架物品失败: {e}", exc_info=True)
+            yield event.plain_result(f"下架失败：{str(e)}")
+
+    @filter.command("我的上架", alias={"my_listings", "我的物品"})
+    async def my_listings_cmd(self, event: AstrMessageEvent):
+        """查看我的上架物品"""
+        user_id = event.get_sender_id()
+        try:
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
+            # 获取我的上架列表
+            my_listings = await self.market_sys.get_my_listings(user_id)
+
+            if not my_listings:
+                yield event.plain_result(
+                    "📦 您还没有上架任何物品\n\n"
+                    "💡 使用 /上架 出售物品"
+                )
+                return
+
+            # 格式化显示
+            lines = ["📦 我的上架物品", "─" * 40, ""]
+
+            for i, item in enumerate(my_listings, 1):
+                quality_emoji = {
+                    '凡品': '⚪', '灵品': '🔵', '宝品': '🟣',
+                    '仙品': '🟡', '神品': '🔴', '道品': '⭐'
+                }.get(item['quality'], '⚪')
+
+                lines.append(
+                    f"{i}. {quality_emoji} {item['item_name']} x{item['quantity']}\n"
+                    f"   💎 价格: {item['price']} 灵石\n"
+                    f"   📅 上架: {item['listed_at'][:10]}"
+                )
+
+            lines.extend([
+                "",
+                f"📊 共 {len(my_listings)} 件物品",
+                "",
+                "💡 使用 /下架 [编号] 取消上架"
+            ])
+
+            yield event.plain_result("\n".join(lines))
+
+        except PlayerNotFoundError:
+            yield event.plain_result("您还没有创建角色，请先使用 /修仙 创建角色")
+        except Exception as e:
+            logger.error(f"查看我的上架失败: {e}", exc_info=True)
+            yield event.plain_result(f"查看失败：{str(e)}")

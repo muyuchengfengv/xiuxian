@@ -1,0 +1,523 @@
+"""
+坊市交易系统
+负责物品/装备/功法的交易、上架、购买等功能
+"""
+
+import uuid
+from typing import Dict, List, Optional
+from datetime import datetime
+from astrbot.api import logger
+
+from .database import DatabaseManager
+from .player import PlayerManager
+from .items import ItemManager
+from ..utils import XiuxianException
+
+
+class MarketError(XiuxianException):
+    """坊市相关异常"""
+    pass
+
+
+class ItemNotOwnedError(MarketError):
+    """物品不属于该用户异常"""
+    pass
+
+
+class ItemNotTradableError(MarketError):
+    """物品不可交易异常"""
+    pass
+
+
+class ListingNotFoundError(MarketError):
+    """市场商品不存在异常"""
+    pass
+
+
+class InsufficientSpiritStoneError(MarketError):
+    """灵石不足异常"""
+    pass
+
+
+class MarketSystem:
+    """坊市交易系统类"""
+
+    def __init__(self, db: DatabaseManager, player_mgr: PlayerManager, item_mgr: ItemManager):
+        """
+        初始化坊市系统
+
+        Args:
+            db: 数据库管理器
+            player_mgr: 玩家管理器
+            item_mgr: 物品管理器
+        """
+        self.db = db
+        self.player_mgr = player_mgr
+        self.item_mgr = item_mgr
+
+        # 交易税率（5%）
+        self.transaction_tax_rate = 0.05
+
+    async def initialize(self):
+        """初始化数据库表（在主程序中调用）"""
+        await self._ensure_market_tables()
+
+    async def list_item(self, user_id: str, item_type: str, item_id: str,
+                       price: int, quantity: int = 1) -> Dict:
+        """
+        上架物品到坊市
+
+        Args:
+            user_id: 用户ID
+            item_type: 物品类型 (equipment/pill/material/method)
+            item_id: 物品ID
+            price: 价格
+            quantity: 数量（装备固定为1）
+
+        Returns:
+            上架结果字典
+
+        Raises:
+            ItemNotOwnedError: 物品不属于该用户
+            ItemNotTradableError: 物品不可交易
+            ValueError: 参数错误
+        """
+        # 验证价格
+        if price <= 0:
+            raise ValueError("价格必须大于0")
+
+        if quantity <= 0:
+            raise ValueError("数量必须大于0")
+
+        # 获取玩家信息
+        player = await self.player_mgr.get_player_or_error(user_id)
+
+        # 根据类型验证物品所有权和可交易性
+        item_name = ""
+        quality = ""
+
+        if item_type == "equipment":
+            # 装备类型
+            from .equipment import EquipmentSystem
+            equipment_sys = EquipmentSystem(self.db, self.player_mgr)
+
+            equipment = await equipment_sys.get_equipment_by_id(item_id, user_id)
+
+            # 检查装备是否已绑定
+            if equipment.is_bound:
+                raise ItemNotTradableError("已绑定的装备无法交易")
+
+            # 检查装备是否已装备
+            if equipment.is_equipped:
+                raise ItemNotTradableError("已装备的物品无法交易，请先卸下")
+
+            item_name = equipment.get_display_name()
+            quality = equipment.quality
+            quantity = 1  # 装备数量固定为1
+
+        elif item_type == "method":
+            # 功法类型
+            from .cultivation_method import CultivationMethodSystem
+            method_sys = CultivationMethodSystem(self.db, self.player_mgr)
+
+            method = await method_sys.get_method_by_id(item_id, user_id)
+
+            # 检查功法是否已装备
+            if method.is_equipped:
+                raise ItemNotTradableError("已装备的功法无法交易，请先卸下")
+
+            item_name = method.get_display_name()
+            quality = method.quality
+            quantity = 1  # 功法数量固定为1
+
+        elif item_type in ["pill", "material"]:
+            # 丹药或材料（使用物品系统）
+            # 检查物品数量
+            item_data = await self.item_mgr.get_item(user_id, item_id)
+            if not item_data:
+                raise ItemNotOwnedError(f"未找到物品 {item_id}")
+
+            if item_data['quantity'] < quantity:
+                raise ValueError(f"物品数量不足，当前拥有 {item_data['quantity']}")
+
+            item_name = item_data['name']
+            quality = item_data.get('quality', '凡品')
+
+            # 扣除物品数量
+            await self.item_mgr.remove_item(user_id, item_id, quantity)
+        else:
+            raise ValueError(f"不支持的物品类型: {item_type}")
+
+        # 创建市场商品记录
+        listing_id = str(uuid.uuid4())
+        listing_data = {
+            'id': listing_id,
+            'seller_id': user_id,
+            'item_type': item_type,
+            'item_id': item_id,
+            'item_name': item_name,
+            'quality': quality,
+            'price': price,
+            'quantity': quantity,
+            'status': 'active',
+            'listed_at': datetime.now().isoformat()
+        }
+
+        # 插入数据库（将在下一个任务中实现表结构）
+        await self._save_listing(listing_data)
+
+        logger.info(f"玩家 {player.name} 上架物品: {item_name} x{quantity}, 价格 {price}")
+
+        return {
+            'success': True,
+            'listing_id': listing_id,
+            'item_name': item_name,
+            'price': price,
+            'quantity': quantity
+        }
+
+    async def get_market_items(self, item_type: Optional[str] = None,
+                              page: int = 1, page_size: int = 20) -> List[Dict]:
+        """
+        查询坊市物品列表
+
+        Args:
+            item_type: 物品类型筛选（可选）
+            page: 页码（从1开始）
+            page_size: 每页数量
+
+        Returns:
+            市场物品列表
+        """
+        offset = (page - 1) * page_size
+
+        # 构建查询条件
+        where_clause = "WHERE status = 'active'"
+        params = []
+
+        if item_type:
+            where_clause += " AND item_type = ?"
+            params.append(item_type)
+
+        # 查询市场物品
+        sql = f"""
+            SELECT * FROM market_items
+            {where_clause}
+            ORDER BY listed_at DESC
+            LIMIT ? OFFSET ?
+        """
+        params.extend([page_size, offset])
+
+        results = await self.db.fetchall(sql, tuple(params))
+
+        items = []
+        for result in results:
+            item_data = dict(result)
+            items.append(item_data)
+
+        return items
+
+    async def purchase_item(self, buyer_id: str, listing_id: str) -> Dict:
+        """
+        购买市场物品
+
+        Args:
+            buyer_id: 买家用户ID
+            listing_id: 市场商品ID
+
+        Returns:
+            购买结果字典
+
+        Raises:
+            ListingNotFoundError: 商品不存在或已售出
+            InsufficientSpiritStoneError: 灵石不足
+            ValueError: 不能购买自己的商品
+        """
+        # 查询市场商品
+        listing = await self._get_listing(listing_id)
+        if not listing:
+            raise ListingNotFoundError(f"商品 {listing_id} 不存在")
+
+        if listing['status'] != 'active':
+            raise ListingNotFoundError("该商品已售出或已下架")
+
+        # 检查是否购买自己的商品
+        if listing['seller_id'] == buyer_id:
+            raise ValueError("不能购买自己上架的商品")
+
+        # 获取买家和卖家信息
+        buyer = await self.player_mgr.get_player_or_error(buyer_id)
+        seller = await self.player_mgr.get_player(listing['seller_id'])
+
+        # 计算税费
+        price = listing['price']
+        tax = int(price * self.transaction_tax_rate)
+        seller_receive = price - tax
+
+        # 检查买家灵石
+        if buyer.spirit_stone < price:
+            raise InsufficientSpiritStoneError(
+                f"灵石不足！需要 {price}，当前拥有 {buyer.spirit_stone}"
+            )
+
+        # 使用数据库事务确保一致性
+        try:
+            # 扣除买家灵石
+            buyer.spirit_stone -= price
+            await self.player_mgr.update_player(buyer)
+
+            # 增加卖家灵石
+            if seller:
+                seller.spirit_stone += seller_receive
+                await self.player_mgr.update_player(seller)
+
+            # 转移物品到买家
+            item_type = listing['item_type']
+            item_id = listing['item_id']
+            quantity = listing['quantity']
+
+            if item_type == "equipment":
+                # 转移装备所有权
+                await self.db.execute(
+                    "UPDATE equipment SET user_id = ? WHERE id = ?",
+                    (buyer_id, item_id)
+                )
+            elif item_type == "method":
+                # 转移功法所有权
+                await self.db.execute(
+                    "UPDATE cultivation_methods SET owner_id = ?, user_id = ? WHERE id = ?",
+                    (buyer_id, buyer_id, item_id)
+                )
+            elif item_type in ["pill", "material"]:
+                # 添加物品到买家背包
+                await self.item_mgr.add_item(buyer_id, item_id, quantity)
+
+            # 更新商品状态
+            await self.db.execute(
+                "UPDATE market_items SET status = 'sold', sold_at = ? WHERE id = ?",
+                (datetime.now().isoformat(), listing_id)
+            )
+
+            # 记录交易历史
+            transaction_id = str(uuid.uuid4())
+            transaction_data = {
+                'id': transaction_id,
+                'listing_id': listing_id,
+                'seller_id': listing['seller_id'],
+                'buyer_id': buyer_id,
+                'item_type': item_type,
+                'item_id': item_id,
+                'price': price,
+                'quantity': quantity,
+                'tax': tax,
+                'transaction_time': datetime.now().isoformat()
+            }
+            await self._save_transaction(transaction_data)
+
+            logger.info(
+                f"交易完成: {buyer.name} 从 {seller.name if seller else '未知'} "
+                f"购买 {listing['item_name']} x{quantity}, 价格 {price}"
+            )
+
+            return {
+                'success': True,
+                'item_name': listing['item_name'],
+                'quantity': quantity,
+                'price': price,
+                'tax': tax,
+                'seller_receive': seller_receive,
+                'buyer_remaining': buyer.spirit_stone
+            }
+
+        except Exception as e:
+            logger.error(f"购买物品失败: {e}", exc_info=True)
+            raise MarketError(f"交易失败: {str(e)}")
+
+    async def cancel_listing(self, user_id: str, listing_id: str) -> Dict:
+        """
+        取消上架（下架）
+
+        Args:
+            user_id: 用户ID
+            listing_id: 市场商品ID
+
+        Returns:
+            取消结果字典
+
+        Raises:
+            ListingNotFoundError: 商品不存在
+            ValueError: 商品不属于该用户或已售出
+        """
+        # 查询市场商品
+        listing = await self._get_listing(listing_id)
+        if not listing:
+            raise ListingNotFoundError(f"商品 {listing_id} 不存在")
+
+        # 验证所有权
+        if listing['seller_id'] != user_id:
+            raise ValueError("只能下架自己的商品")
+
+        if listing['status'] != 'active':
+            raise ValueError("该商品已售出或已下架")
+
+        # 退还物品
+        item_type = listing['item_type']
+        item_id = listing['item_id']
+        quantity = listing['quantity']
+
+        if item_type in ["pill", "material"]:
+            # 退还丹药或材料
+            await self.item_mgr.add_item(user_id, item_id, quantity)
+
+        # 更新商品状态
+        await self.db.execute(
+            "UPDATE market_items SET status = 'cancelled' WHERE id = ?",
+            (listing_id,)
+        )
+
+        player = await self.player_mgr.get_player_or_error(user_id)
+        logger.info(f"玩家 {player.name} 下架物品: {listing['item_name']}")
+
+        return {
+            'success': True,
+            'item_name': listing['item_name'],
+            'quantity': quantity
+        }
+
+    async def get_transaction_history(self, user_id: str, limit: int = 10) -> List[Dict]:
+        """
+        查询交易历史
+
+        Args:
+            user_id: 用户ID
+            limit: 限制返回数量
+
+        Returns:
+            交易历史列表
+        """
+        sql = """
+            SELECT * FROM market_transactions
+            WHERE seller_id = ? OR buyer_id = ?
+            ORDER BY transaction_time DESC
+            LIMIT ?
+        """
+        results = await self.db.fetchall(sql, (user_id, user_id, limit))
+
+        transactions = []
+        for result in results:
+            trans_data = dict(result)
+            transactions.append(trans_data)
+
+        return transactions
+
+    async def get_my_listings(self, user_id: str) -> List[Dict]:
+        """
+        查询我的上架物品
+
+        Args:
+            user_id: 用户ID
+
+        Returns:
+            上架物品列表
+        """
+        sql = """
+            SELECT * FROM market_items
+            WHERE seller_id = ? AND status = 'active'
+            ORDER BY listed_at DESC
+        """
+        results = await self.db.fetchall(sql, (user_id,))
+
+        listings = []
+        for result in results:
+            listing_data = dict(result)
+            listings.append(listing_data)
+
+        return listings
+
+    # ========== 内部辅助方法 ==========
+
+    async def _save_listing(self, listing_data: Dict):
+        """保存市场商品记录"""
+        columns = list(listing_data.keys())
+        placeholders = ', '.join(['?' for _ in columns])
+        values = list(listing_data.values())
+
+        sql = f"INSERT INTO market_items ({', '.join(columns)}) VALUES ({placeholders})"
+        await self.db.execute(sql, values)
+
+    async def _get_listing(self, listing_id: str) -> Optional[Dict]:
+        """获取市场商品信息"""
+        result = await self.db.fetchone(
+            "SELECT * FROM market_items WHERE id = ?",
+            (listing_id,)
+        )
+        return dict(result) if result else None
+
+    async def _save_transaction(self, transaction_data: Dict):
+        """保存交易记录"""
+        columns = list(transaction_data.keys())
+        placeholders = ', '.join(['?' for _ in columns])
+        values = list(transaction_data.values())
+
+        sql = f"INSERT INTO market_transactions ({', '.join(columns)}) VALUES ({placeholders})"
+        await self.db.execute(sql, values)
+
+    async def _ensure_market_tables(self):
+        """确保坊市数据库表存在"""
+        # 创建market_items表
+        await self.db.execute("""
+            CREATE TABLE IF NOT EXISTS market_items (
+                id TEXT PRIMARY KEY,
+                seller_id TEXT NOT NULL,
+                item_type TEXT NOT NULL,
+                item_id TEXT NOT NULL,
+                item_name TEXT NOT NULL,
+                quality TEXT,
+                price INTEGER NOT NULL,
+                quantity INTEGER DEFAULT 1,
+                status TEXT DEFAULT 'active',
+                listed_at TEXT NOT NULL,
+                sold_at TEXT
+            )
+        """)
+
+        # 创建market_transactions表
+        await self.db.execute("""
+            CREATE TABLE IF NOT EXISTS market_transactions (
+                id TEXT PRIMARY KEY,
+                listing_id TEXT NOT NULL,
+                seller_id TEXT NOT NULL,
+                buyer_id TEXT NOT NULL,
+                item_type TEXT NOT NULL,
+                item_id TEXT NOT NULL,
+                price INTEGER NOT NULL,
+                quantity INTEGER NOT NULL,
+                tax INTEGER DEFAULT 0,
+                transaction_time TEXT NOT NULL
+            )
+        """)
+
+        # 创建索引以提高查询性能
+        # 市场物品索引
+        await self.db.execute("""
+            CREATE INDEX IF NOT EXISTS idx_market_items_type
+            ON market_items(item_type, status)
+        """)
+
+        await self.db.execute("""
+            CREATE INDEX IF NOT EXISTS idx_market_items_seller
+            ON market_items(seller_id)
+        """)
+
+        # 交易记录索引
+        await self.db.execute("""
+            CREATE INDEX IF NOT EXISTS idx_transactions_buyer
+            ON market_transactions(buyer_id)
+        """)
+
+        await self.db.execute("""
+            CREATE INDEX IF NOT EXISTS idx_transactions_seller
+            ON market_transactions(seller_id)
+        """)
+
+        logger.info("坊市数据库表和索引已初始化")

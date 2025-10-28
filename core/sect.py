@@ -561,6 +561,997 @@ class SectSystem:
 
         return sects
 
+    # ========== 宗门建筑加成系统 ==========
+
+    async def get_sect_bonuses(self, sect_id: str) -> Dict[str, float]:
+        """
+        计算宗门建筑加成
+
+        Args:
+            sect_id: 宗门ID
+
+        Returns:
+            加成字典，包含各类型加成系数
+
+        Raises:
+            SectNotFoundError: 宗门不存在
+        """
+        # 获取宗门信息
+        sect = await self.get_sect_by_id(sect_id)
+
+        # 建筑加成配置
+        bonuses = {
+            "cultivation_bonus": 0.0,  # 修炼效率加成
+            "alchemy_bonus": 0.0,      # 炼丹成功率加成
+            "refining_bonus": 0.0,     # 炼器成功率加成
+            "formation_bonus": 0.0,    # 阵法效果加成
+            "talisman_bonus": 0.0,     # 符箓效果加成
+            "method_quality_bonus": 0.0  # 功法品质加成
+        }
+
+        # 练功房：修炼效率加成 +10%/级
+        practice_room_level = sect.get_building_level("练功房")
+        if practice_room_level > 0:
+            bonuses["cultivation_bonus"] = practice_room_level * 0.10
+
+        # 炼丹房：炼丹成功率加成 +8%/级
+        alchemy_room_level = sect.get_building_level("炼丹房")
+        if alchemy_room_level > 0:
+            bonuses["alchemy_bonus"] = alchemy_room_level * 0.08
+
+        # 炼器房：炼器成功率加成 +8%/级
+        refining_room_level = sect.get_building_level("炼器房")
+        if refining_room_level > 0:
+            bonuses["refining_bonus"] = refining_room_level * 0.08
+
+        # 藏经阁：功法品质加成 +5%/级
+        library_level = sect.get_building_level("藏经阁")
+        if library_level > 0:
+            bonuses["method_quality_bonus"] = library_level * 0.05
+
+        return bonuses
+
+    async def apply_sect_bonus(self, user_id: str, bonus_type: str, base_value: float) -> Tuple[float, float]:
+        """
+        应用宗门加成到数值
+
+        Args:
+            user_id: 用户ID
+            bonus_type: 加成类型（cultivation_bonus, alchemy_bonus等）
+            base_value: 基础值
+
+        Returns:
+            (加成后的值, 加成系数)
+
+        Raises:
+            ValueError: 无效的加成类型
+        """
+        # 获取玩家所在宗门
+        sect = await self.get_player_sect(user_id)
+
+        # 如果玩家没有宗门，返回原值
+        if not sect:
+            return base_value, 0.0
+
+        # 获取宗门加成
+        bonuses = await self.get_sect_bonuses(sect.id)
+
+        # 检查加成类型是否有效
+        if bonus_type not in bonuses:
+            raise ValueError(f"无效的加成类型: {bonus_type}")
+
+        # 获取对应的加成系数
+        bonus_rate = bonuses[bonus_type]
+
+        # 计算加成后的值
+        bonus_value = base_value * (1 + bonus_rate)
+
+        return bonus_value, bonus_rate
+
+    async def get_member_bonuses(self, user_id: str) -> Dict:
+        """
+        获取成员的宗门加成信息（用于显示）
+
+        Args:
+            user_id: 用户ID
+
+        Returns:
+            加成信息字典
+        """
+        # 获取玩家所在宗门
+        sect = await self.get_player_sect(user_id)
+
+        if not sect:
+            return {
+                "has_sect": False,
+                "sect_name": None,
+                "bonuses": {}
+            }
+
+        # 获取宗门加成
+        bonuses = await self.get_sect_bonuses(sect.id)
+
+        # 格式化加成信息
+        bonus_display = {}
+        if bonuses["cultivation_bonus"] > 0:
+            bonus_display["修炼效率"] = f"+{bonuses['cultivation_bonus']*100:.0f}%"
+        if bonuses["alchemy_bonus"] > 0:
+            bonus_display["炼丹成功率"] = f"+{bonuses['alchemy_bonus']*100:.0f}%"
+        if bonuses["refining_bonus"] > 0:
+            bonus_display["炼器成功率"] = f"+{bonuses['refining_bonus']*100:.0f}%"
+        if bonuses["method_quality_bonus"] > 0:
+            bonus_display["功法品质"] = f"+{bonuses['method_quality_bonus']*100:.0f}%"
+
+        return {
+            "has_sect": True,
+            "sect_name": sect.name,
+            "sect_level": sect.level,
+            "bonuses": bonus_display,
+            "raw_bonuses": bonuses
+        }
+
+    # ========== 宗门任务系统 ==========
+
+    async def init_base_tasks(self):
+        """初始化基础任务"""
+        import json
+
+        base_tasks = [
+            # 每日任务
+            {
+                "id": "daily_cultivate",
+                "task_type": "daily",
+                "task_name": "每日修炼",
+                "task_description": "完成3次修炼",
+                "requirements": json.dumps({"type": "cultivation", "amount": 3}),
+                "contribution_reward": 50,
+                "spirit_stone_reward": 100,
+                "exp_reward": 50
+            },
+            {
+                "id": "daily_combat",
+                "task_type": "daily",
+                "task_name": "斩妖除魔",
+                "task_description": "挑战5次妖兽",
+                "requirements": json.dumps({"type": "combat", "amount": 5}),
+                "contribution_reward": 80,
+                "spirit_stone_reward": 200,
+                "exp_reward": 100
+            },
+            {
+                "id": "daily_donate",
+                "task_type": "daily",
+                "task_name": "资源捐献",
+                "task_description": "向宗门捐献500灵石",
+                "requirements": json.dumps({"type": "donate", "amount": 500}),
+                "contribution_reward": 100,
+                "spirit_stone_reward": 0,
+                "exp_reward": 50
+            },
+            # 每周任务
+            {
+                "id": "weekly_alchemy",
+                "task_type": "weekly",
+                "task_name": "炼丹大师",
+                "task_description": "成功炼制10颗丹药",
+                "requirements": json.dumps({"type": "alchemy", "amount": 10}),
+                "contribution_reward": 300,
+                "spirit_stone_reward": 1000,
+                "exp_reward": 500
+            },
+            {
+                "id": "weekly_refining",
+                "task_type": "weekly",
+                "task_name": "炼器宗师",
+                "task_description": "成功炼制5件装备",
+                "requirements": json.dumps({"type": "refining", "amount": 5}),
+                "contribution_reward": 300,
+                "spirit_stone_reward": 1000,
+                "exp_reward": 500
+            },
+            {
+                "id": "weekly_contribution",
+                "task_type": "weekly",
+                "task_name": "宗门之柱",
+                "task_description": "获得500宗门贡献度",
+                "requirements": json.dumps({"type": "contribution", "amount": 500}),
+                "contribution_reward": 500,
+                "spirit_stone_reward": 2000,
+                "exp_reward": 1000
+            }
+        ]
+
+        await self._ensure_sect_tasks_table()
+
+        for task_data in base_tasks:
+            # 检查任务是否存在
+            existing = await self.db.fetchone(
+                "SELECT id FROM sect_tasks WHERE id = ?",
+                (task_data['id'],)
+            )
+
+            if not existing:
+                # 插入任务
+                await self.db.execute(
+                    """
+                    INSERT INTO sect_tasks (
+                        id, task_type, task_name, task_description, requirements,
+                        contribution_reward, spirit_stone_reward, exp_reward, is_active
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        task_data['id'],
+                        task_data['task_type'],
+                        task_data['task_name'],
+                        task_data['task_description'],
+                        task_data['requirements'],
+                        task_data['contribution_reward'],
+                        task_data['spirit_stone_reward'],
+                        task_data['exp_reward'],
+                        1
+                    )
+                )
+
+        logger.info("宗门基础任务初始化完成")
+
+    async def get_available_tasks(self, user_id: str, task_type: Optional[str] = None) -> List[Dict]:
+        """
+        获取可接取的任务列表
+
+        Args:
+            user_id: 用户ID
+            task_type: 任务类型（daily/weekly），None表示所有类型
+
+        Returns:
+            可接取的任务列表
+
+        Raises:
+            NotSectMemberError: 不是宗门成员
+        """
+        import json
+        from datetime import datetime, timedelta
+
+        # 检查是否是宗门成员
+        member = await self.get_sect_member(user_id)
+        if not member:
+            raise NotSectMemberError("道友尚未加入任何宗门")
+
+        await self._ensure_sect_tasks_table()
+
+        # 获取所有活跃任务
+        query = "SELECT * FROM sect_tasks WHERE is_active = 1"
+        params = []
+
+        if task_type:
+            query += " AND task_type = ?"
+            params.append(task_type)
+
+        all_tasks = await self.db.fetchall(query, tuple(params))
+
+        # 获取今天的日期（用于每日任务）
+        today = datetime.now().date().isoformat()
+
+        # 获取本周开始日期（用于每周任务）
+        today_dt = datetime.now()
+        week_start = (today_dt - timedelta(days=today_dt.weekday())).date().isoformat()
+
+        available_tasks = []
+        for task in all_tasks:
+            task_data = dict(task)
+
+            # 检查玩家是否已接取此任务
+            if task_data['task_type'] == 'daily':
+                # 每日任务：检查今天是否已接取
+                existing = await self.db.fetchone(
+                    """
+                    SELECT id, status, progress, target FROM sect_member_tasks
+                    WHERE user_id = ? AND task_id = ? AND date(accepted_at) = ?
+                    """,
+                    (user_id, task_data['id'], today)
+                )
+            else:  # weekly
+                # 每周任务：检查本周是否已接取
+                existing = await self.db.fetchone(
+                    """
+                    SELECT id, status, progress, target FROM sect_member_tasks
+                    WHERE user_id = ? AND task_id = ? AND date(accepted_at) >= ?
+                    """,
+                    (user_id, task_data['id'], week_start)
+                )
+
+            # 解析任务要求
+            requirements = json.loads(task_data['requirements'])
+
+            task_info = {
+                "task_id": task_data['id'],
+                "task_type": task_data['task_type'],
+                "task_name": task_data['task_name'],
+                "task_description": task_data['task_description'],
+                "requirements": requirements,
+                "contribution_reward": task_data['contribution_reward'],
+                "spirit_stone_reward": task_data['spirit_stone_reward'],
+                "exp_reward": task_data['exp_reward'],
+                "is_accepted": existing is not None,
+                "status": dict(existing)['status'] if existing else None,
+                "progress": dict(existing)['progress'] if existing else 0,
+                "target": requirements['amount']
+            }
+
+            available_tasks.append(task_info)
+
+        return available_tasks
+
+    async def accept_task(self, user_id: str, task_id: str) -> Dict:
+        """
+        接取宗门任务
+
+        Args:
+            user_id: 用户ID
+            task_id: 任务ID
+
+        Returns:
+            任务信息字典
+
+        Raises:
+            NotSectMemberError: 不是宗门成员
+            SectError: 任务相关错误
+        """
+        import json
+
+        # 检查是否是宗门成员
+        member = await self.get_sect_member(user_id)
+        if not member:
+            raise NotSectMemberError("道友尚未加入任何宗门")
+
+        await self._ensure_sect_tasks_table()
+
+        # 获取任务信息
+        task = await self.db.fetchone(
+            "SELECT * FROM sect_tasks WHERE id = ? AND is_active = 1",
+            (task_id,)
+        )
+
+        if not task:
+            raise SectError(f"任务不存在或已禁用: {task_id}")
+
+        task_data = dict(task)
+
+        # 检查是否已接取
+        from datetime import datetime, timedelta
+        today = datetime.now().date().isoformat()
+        today_dt = datetime.now()
+        week_start = (today_dt - timedelta(days=today_dt.weekday())).date().isoformat()
+
+        if task_data['task_type'] == 'daily':
+            existing = await self.db.fetchone(
+                """
+                SELECT id FROM sect_member_tasks
+                WHERE user_id = ? AND task_id = ? AND date(accepted_at) = ?
+                """,
+                (user_id, task_id, today)
+            )
+        else:  # weekly
+            existing = await self.db.fetchone(
+                """
+                SELECT id FROM sect_member_tasks
+                WHERE user_id = ? AND task_id = ? AND date(accepted_at) >= ?
+                """,
+                (user_id, task_id, week_start)
+            )
+
+        if existing:
+            raise SectError(f"您已接取过此任务")
+
+        # 解析任务要求
+        requirements = json.loads(task_data['requirements'])
+        target = requirements['amount']
+
+        # 创建任务记录
+        member_task_id = str(uuid.uuid4())
+        await self.db.execute(
+            """
+            INSERT INTO sect_member_tasks (
+                id, sect_id, user_id, task_id, progress, target,
+                status, accepted_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                member_task_id,
+                member.sect_id,
+                user_id,
+                task_id,
+                0,
+                target,
+                'active',
+                datetime.now().isoformat()
+            )
+        )
+
+        logger.info(f"玩家 {user_id} 接取宗门任务: {task_data['task_name']}")
+
+        return {
+            "success": True,
+            "task_id": task_id,
+            "task_name": task_data['task_name'],
+            "task_description": task_data['task_description'],
+            "target": target,
+            "progress": 0
+        }
+
+    async def update_task_progress(self, user_id: str, task_type_filter: str, amount: int = 1) -> List[Dict]:
+        """
+        更新任务进度（由其他系统调用）
+
+        Args:
+            user_id: 用户ID
+            task_type_filter: 任务类型过滤（cultivation/combat/donate/alchemy/refining/contribution）
+            amount: 进度增加量
+
+        Returns:
+            更新后的任务列表
+        """
+        import json
+
+        # 检查是否是宗门成员
+        member = await self.get_sect_member(user_id)
+        if not member:
+            return []  # 不是宗门成员，静默返回
+
+        await self._ensure_sect_tasks_table()
+
+        # 查询所有进行中的任务
+        active_tasks = await self.db.fetchall(
+            """
+            SELECT mt.*, t.requirements, t.task_name
+            FROM sect_member_tasks mt
+            JOIN sect_tasks t ON mt.task_id = t.id
+            WHERE mt.user_id = ? AND mt.status = 'active'
+            """,
+            (user_id,)
+        )
+
+        updated_tasks = []
+        for task in active_tasks:
+            task_data = dict(task)
+            requirements = json.loads(task_data['requirements'])
+
+            # 检查任务类型是否匹配
+            if requirements['type'] != task_type_filter:
+                continue
+
+            # 更新进度
+            new_progress = task_data['progress'] + amount
+            target = task_data['target']
+
+            # 检查是否完成
+            if new_progress >= target:
+                new_progress = target
+                new_status = 'completed'
+                completed_at = datetime.now().isoformat()
+
+                await self.db.execute(
+                    """
+                    UPDATE sect_member_tasks
+                    SET progress = ?, status = ?, completed_at = ?
+                    WHERE id = ?
+                    """,
+                    (new_progress, new_status, completed_at, task_data['id'])
+                )
+
+                logger.info(f"玩家 {user_id} 完成宗门任务: {task_data['task_name']}")
+            else:
+                await self.db.execute(
+                    """
+                    UPDATE sect_member_tasks
+                    SET progress = ?
+                    WHERE id = ?
+                    """,
+                    (new_progress, task_data['id'])
+                )
+
+            updated_tasks.append({
+                "task_id": task_data['task_id'],
+                "task_name": task_data['task_name'],
+                "progress": new_progress,
+                "target": target,
+                "completed": new_progress >= target
+            })
+
+        return updated_tasks
+
+    async def complete_task(self, user_id: str, member_task_id: str) -> Dict:
+        """
+        完成并领取任务奖励
+
+        Args:
+            user_id: 用户ID
+            member_task_id: 成员任务ID
+
+        Returns:
+            奖励信息字典
+
+        Raises:
+            NotSectMemberError: 不是宗门成员
+            SectError: 任务相关错误
+        """
+        # 检查是否是宗门成员
+        member = await self.get_sect_member(user_id)
+        if not member:
+            raise NotSectMemberError("道友尚未加入任何宗门")
+
+        await self._ensure_sect_tasks_table()
+
+        # 获取任务信息
+        task_result = await self.db.fetchone(
+            """
+            SELECT mt.*, t.task_name, t.contribution_reward,
+                   t.spirit_stone_reward, t.exp_reward
+            FROM sect_member_tasks mt
+            JOIN sect_tasks t ON mt.task_id = t.id
+            WHERE mt.id = ? AND mt.user_id = ?
+            """,
+            (member_task_id, user_id)
+        )
+
+        if not task_result:
+            raise SectError("任务不存在或不属于您")
+
+        task_data = dict(task_result)
+
+        # 检查任务状态
+        if task_data['status'] != 'completed':
+            raise SectError(f"任务尚未完成（进度：{task_data['progress']}/{task_data['target']}）")
+
+        if task_data.get('claimed_at'):
+            raise SectError("任务奖励已领取")
+
+        # 发放奖励
+        rewards = {
+            "contribution": task_data['contribution_reward'],
+            "spirit_stone": task_data['spirit_stone_reward'],
+            "exp": task_data['exp_reward']
+        }
+
+        # 增加贡献度
+        if rewards['contribution'] > 0:
+            member.contribution += rewards['contribution']
+            member.total_contribution += rewards['contribution']
+            await self._update_member(member)
+
+        # 增加灵石（需要通过player_mgr）
+        if rewards['spirit_stone'] > 0:
+            await self.player_mgr.add_spirit_stone(user_id, rewards['spirit_stone'])
+
+        # 增加经验（需要通过player_mgr）
+        if rewards['exp'] > 0:
+            player = await self.player_mgr.get_player_or_error(user_id)
+            player.experience += rewards['exp']
+            await self.player_mgr.update_player(player)
+
+        # 标记为已领取
+        await self.db.execute(
+            """
+            UPDATE sect_member_tasks
+            SET claimed_at = ?
+            WHERE id = ?
+            """,
+            (datetime.now().isoformat(), member_task_id)
+        )
+
+        logger.info(f"玩家 {user_id} 领取宗门任务奖励: {task_data['task_name']}")
+
+        return {
+            "success": True,
+            "task_name": task_data['task_name'],
+            "rewards": rewards
+        }
+
+    async def get_member_tasks(self, user_id: str, status_filter: Optional[str] = None) -> List[Dict]:
+        """
+        获取成员的任务列表
+
+        Args:
+            user_id: 用户ID
+            status_filter: 状态过滤（active/completed/claimed）
+
+        Returns:
+            任务列表
+
+        Raises:
+            NotSectMemberError: 不是宗门成员
+        """
+        import json
+
+        # 检查是否是宗门成员
+        member = await self.get_sect_member(user_id)
+        if not member:
+            raise NotSectMemberError("道友尚未加入任何宗门")
+
+        await self._ensure_sect_tasks_table()
+
+        # 构建查询
+        query = """
+            SELECT mt.*, t.task_name, t.task_description, t.task_type,
+                   t.requirements, t.contribution_reward, t.spirit_stone_reward,
+                   t.exp_reward
+            FROM sect_member_tasks mt
+            JOIN sect_tasks t ON mt.task_id = t.id
+            WHERE mt.user_id = ?
+        """
+        params = [user_id]
+
+        if status_filter:
+            query += " AND mt.status = ?"
+            params.append(status_filter)
+
+        query += " ORDER BY mt.accepted_at DESC"
+
+        results = await self.db.fetchall(query, tuple(params))
+
+        tasks = []
+        for result in results:
+            task_data = dict(result)
+            requirements = json.loads(task_data['requirements'])
+
+            task_info = {
+                "id": task_data['id'],
+                "task_id": task_data['task_id'],
+                "task_name": task_data['task_name'],
+                "task_description": task_data['task_description'],
+                "task_type": task_data['task_type'],
+                "requirements_type": requirements['type'],
+                "progress": task_data['progress'],
+                "target": task_data['target'],
+                "status": task_data['status'],
+                "contribution_reward": task_data['contribution_reward'],
+                "spirit_stone_reward": task_data['spirit_stone_reward'],
+                "exp_reward": task_data['exp_reward'],
+                "accepted_at": task_data['accepted_at'],
+                "completed_at": task_data.get('completed_at'),
+                "claimed_at": task_data.get('claimed_at'),
+                "can_claim": task_data['status'] == 'completed' and not task_data.get('claimed_at')
+            }
+
+            tasks.append(task_info)
+
+        return tasks
+
+    # ========== 宗门功法库系统 ==========
+
+    async def add_sect_method(self, sect_id: str, method_id: str, method_name: str,
+                             method_type: str, method_quality: str,
+                             required_contribution: int = 0,
+                             required_position: str = "弟子",
+                             donated_by: Optional[str] = None) -> Dict:
+        """
+        添加功法到宗门库
+
+        Args:
+            sect_id: 宗门ID
+            method_id: 功法ID
+            method_name: 功法名称
+            method_type: 功法类型
+            method_quality: 功法品质
+            required_contribution: 需要的贡献度
+            required_position: 需要的职位
+            donated_by: 捐献者ID(可选)
+
+        Returns:
+            添加结果字典
+
+        Raises:
+            SectNotFoundError: 宗门不存在
+        """
+        # 验证宗门存在
+        sect = await self.get_sect_by_id(sect_id)
+
+        # 确保表存在
+        await self._ensure_sect_methods_table()
+
+        # 检查功法是否已存在
+        existing = await self.db.fetchone(
+            "SELECT id FROM sect_methods WHERE sect_id = ? AND method_id = ?",
+            (sect_id, method_id)
+        )
+
+        if existing:
+            raise SectError(f"功法 {method_name} 已在宗门库中")
+
+        # 获取职位等级
+        required_position_level = self.POSITIONS.get(required_position, {}).get("level", 1)
+
+        # 插入功法记录
+        await self.db.execute(
+            """
+            INSERT INTO sect_methods (
+                sect_id, method_id, method_name, method_type, method_quality,
+                required_contribution, required_position, required_position_level,
+                donated_by, added_at, learn_count
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (sect_id, method_id, method_name, method_type, method_quality,
+             required_contribution, required_position, required_position_level,
+             donated_by, datetime.now().isoformat(), 0)
+        )
+
+        logger.info(f"宗门 {sect.name} 添加功法: {method_name}")
+
+        return {
+            "method_id": method_id,
+            "method_name": method_name,
+            "required_contribution": required_contribution,
+            "required_position": required_position
+        }
+
+    async def get_sect_methods(self, sect_id: str, user_id: Optional[str] = None) -> List[Dict]:
+        """
+        查询宗门功法库
+
+        Args:
+            sect_id: 宗门ID
+            user_id: 用户ID(可选，用于标记已学习状态)
+
+        Returns:
+            功法列表
+
+        Raises:
+            SectNotFoundError: 宗门不存在
+        """
+        # 验证宗门存在
+        sect = await self.get_sect_by_id(sect_id)
+
+        # 确保表存在
+        await self._ensure_sect_methods_table()
+
+        # 查询宗门所有功法
+        results = await self.db.fetchall(
+            """
+            SELECT * FROM sect_methods
+            WHERE sect_id = ?
+            ORDER BY required_position_level DESC, required_contribution DESC
+            """,
+            (sect_id,)
+        )
+
+        methods = []
+        for result in results:
+            method_data = dict(result)
+
+            # 如果提供了user_id，检查玩家是否已学习此功法
+            learned = False
+            if user_id:
+                # 检查玩家是否拥有此功法
+                learned_result = await self.db.fetchone(
+                    "SELECT id FROM cultivation_methods WHERE user_id = ? AND id = ?",
+                    (user_id, method_data['method_id'])
+                )
+                learned = learned_result is not None
+
+            method_info = {
+                "id": method_data['id'],
+                "method_id": method_data['method_id'],
+                "method_name": method_data['method_name'],
+                "method_type": method_data['method_type'],
+                "method_quality": method_data['method_quality'],
+                "required_contribution": method_data['required_contribution'],
+                "required_position": method_data['required_position'],
+                "required_position_level": method_data['required_position_level'],
+                "donated_by": method_data.get('donated_by'),
+                "added_at": method_data['added_at'],
+                "learn_count": method_data['learn_count'],
+                "learned": learned
+            }
+            methods.append(method_info)
+
+        return methods
+
+    async def learn_sect_method(self, user_id: str, sect_method_id: int, method_sys) -> Dict:
+        """
+        学习宗门功法
+
+        Args:
+            user_id: 用户ID
+            sect_method_id: 宗门功法记录ID
+            method_sys: 功法系统实例
+
+        Returns:
+            学习结果字典
+
+        Raises:
+            NotSectMemberError: 不是宗门成员
+            SectError: 各种宗门相关错误
+        """
+        # 获取成员信息
+        member = await self.get_sect_member(user_id)
+        if not member:
+            raise NotSectMemberError("道友尚未加入任何宗门")
+
+        # 确保表存在
+        await self._ensure_sect_methods_table()
+
+        # 获取宗门功法信息
+        method_data = await self.db.fetchone(
+            "SELECT * FROM sect_methods WHERE id = ? AND sect_id = ?",
+            (sect_method_id, member.sect_id)
+        )
+
+        if not method_data:
+            raise SectError("功法不存在或不属于您的宗门")
+
+        method_data = dict(method_data)
+
+        # 检查是否已学习
+        learned = await self.db.fetchone(
+            "SELECT id FROM cultivation_methods WHERE user_id = ? AND source_id = ?",
+            (user_id, method_data['method_id'])
+        )
+
+        if learned:
+            raise SectError(f"您已经学习过 {method_data['method_name']}")
+
+        # 检查贡献度要求
+        if member.contribution < method_data['required_contribution']:
+            raise InsufficientResourceError(
+                f"贡献度不足，需要 {method_data['required_contribution']}，"
+                f"当前 {member.contribution}"
+            )
+
+        # 检查职位要求
+        if member.position_level < method_data['required_position_level']:
+            raise InsufficientPermissionError(
+                f"职位不足，需要 {method_data['required_position']} 及以上职位"
+            )
+
+        # 生成功法副本到玩家背包
+        # 注意：这里使用method_sys来生成功法
+        new_method = await method_sys.generate_method(
+            user_id,
+            method_type=method_data['method_type'],
+            quality=method_data['method_quality']
+        )
+
+        # 设置功法来源
+        new_method.source = "宗门"
+        new_method.source_id = method_data['method_id']
+
+        # 保存功法（需要调用method_sys的保存方法）
+        # 由于我们已经在generate_method中生成了功法，它应该已经保存了
+
+        # 扣除贡献度（可选，根据宗门设置）
+        contribution_cost = method_data['required_contribution'] // 2  # 消耗一半贡献度
+        member.contribution -= contribution_cost
+        await self._update_member(member)
+
+        # 更新功法学习次数
+        await self.db.execute(
+            "UPDATE sect_methods SET learn_count = learn_count + 1 WHERE id = ?",
+            (sect_method_id,)
+        )
+
+        logger.info(f"玩家 {user_id} 学习宗门功法: {method_data['method_name']}")
+
+        return {
+            "success": True,
+            "method_id": new_method.id,
+            "method_name": method_data['method_name'],
+            "method_type": method_data['method_type'],
+            "method_quality": method_data['method_quality'],
+            "contribution_cost": contribution_cost,
+            "remaining_contribution": member.contribution
+        }
+
+    async def donate_method_to_sect(self, user_id: str, method_id: str, method_sys,
+                                   contribution_reward: Optional[int] = None) -> Dict:
+        """
+        捐献功法到宗门
+
+        Args:
+            user_id: 用户ID
+            method_id: 功法ID
+            method_sys: 功法系统实例
+            contribution_reward: 贡献度奖励(可选，默认根据功法品质计算)
+
+        Returns:
+            捐献结果字典
+
+        Raises:
+            NotSectMemberError: 不是宗门成员
+            SectError: 各种宗门相关错误
+        """
+        # 获取成员信息
+        member = await self.get_sect_member(user_id)
+        if not member:
+            raise NotSectMemberError("道友尚未加入任何宗门")
+
+        # 获取宗门信息
+        sect = await self.get_sect_by_id(member.sect_id)
+
+        # 获取功法信息
+        methods = await method_sys.get_player_methods(user_id)
+        method = None
+        for m in methods:
+            if m.id == method_id:
+                method = m
+                break
+
+        if not method:
+            raise SectError("功法不存在或不属于您")
+
+        # 检查功法是否已装备
+        if method.is_equipped:
+            raise SectError("已装备的功法无法捐献，请先卸下")
+
+        # 检查功法是否绑定
+        if method.is_bound:
+            raise SectError("绑定的功法无法捐献")
+
+        # 计算贡献度奖励
+        if contribution_reward is None:
+            # 根据品质计算奖励
+            quality_rewards = {
+                "凡品": 50,
+                "灵品": 100,
+                "宝品": 200,
+                "仙品": 500,
+                "神品": 1000,
+                "道品": 2000
+            }
+            contribution_reward = quality_rewards.get(method.quality, 50)
+
+        # 计算学习要求
+        quality_contributions = {
+            "凡品": 0,
+            "灵品": 50,
+            "宝品": 100,
+            "仙品": 200,
+            "神品": 500,
+            "道品": 1000
+        }
+        required_contribution = quality_contributions.get(method.quality, 0)
+
+        quality_positions = {
+            "凡品": "弟子",
+            "灵品": "弟子",
+            "宝品": "精英弟子",
+            "仙品": "执事",
+            "神品": "长老",
+            "道品": "宗主"
+        }
+        required_position = quality_positions.get(method.quality, "弟子")
+
+        # 添加功法到宗门库
+        await self.add_sect_method(
+            sect_id=sect.id,
+            method_id=method.id,
+            method_name=method.name,
+            method_type=method.method_type,
+            method_quality=method.quality,
+            required_contribution=required_contribution,
+            required_position=required_position,
+            donated_by=user_id
+        )
+
+        # 删除玩家的功法（转移到宗门）
+        await self.db.execute(
+            "DELETE FROM cultivation_methods WHERE id = ? AND user_id = ?",
+            (method_id, user_id)
+        )
+
+        # 增加玩家贡献度
+        member.contribution += contribution_reward
+        member.total_contribution += contribution_reward
+        await self._update_member(member)
+
+        logger.info(f"玩家 {user_id} 向宗门 {sect.name} 捐献功法: {method.name}")
+
+        return {
+            "success": True,
+            "method_name": method.name,
+            "method_quality": method.quality,
+            "contribution_reward": contribution_reward,
+            "total_contribution": member.total_contribution
+        }
+
     async def _sect_name_exists(self, name: str) -> bool:
         """检查宗门名称是否存在"""
         sect = await self.get_sect_by_name(name)
@@ -671,3 +1662,77 @@ class SectSystem:
         )
         """
         await self.db.execute(sql)
+
+    async def _ensure_sect_methods_table(self):
+        """确保宗门功法表存在"""
+        sql = """
+        CREATE TABLE IF NOT EXISTS sect_methods (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            sect_id TEXT NOT NULL,
+            method_id TEXT NOT NULL,
+            method_name TEXT NOT NULL,
+            method_type TEXT NOT NULL,
+            method_quality TEXT NOT NULL,
+            required_contribution INTEGER DEFAULT 0,
+            required_position TEXT DEFAULT '弟子',
+            required_position_level INTEGER DEFAULT 1,
+            donated_by TEXT,
+            added_at TEXT NOT NULL,
+            learn_count INTEGER DEFAULT 0,
+            UNIQUE(sect_id, method_id)
+        )
+        """
+        await self.db.execute(sql)
+
+        # 创建索引
+        await self.db.execute("""
+            CREATE INDEX IF NOT EXISTS idx_sect_methods_sect
+            ON sect_methods(sect_id)
+        """)
+
+    async def _ensure_sect_tasks_table(self):
+        """确保宗门任务表存在"""
+        # 任务模板表
+        sql = """
+        CREATE TABLE IF NOT EXISTS sect_tasks (
+            id TEXT PRIMARY KEY,
+            task_type TEXT NOT NULL,
+            task_name TEXT NOT NULL,
+            task_description TEXT,
+            requirements TEXT NOT NULL,
+            contribution_reward INTEGER DEFAULT 0,
+            spirit_stone_reward INTEGER DEFAULT 0,
+            exp_reward INTEGER DEFAULT 0,
+            is_active INTEGER DEFAULT 1
+        )
+        """
+        await self.db.execute(sql)
+
+        # 成员任务进度表
+        sql = """
+        CREATE TABLE IF NOT EXISTS sect_member_tasks (
+            id TEXT PRIMARY KEY,
+            sect_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            task_id TEXT NOT NULL,
+            progress INTEGER DEFAULT 0,
+            target INTEGER NOT NULL,
+            status TEXT DEFAULT 'active',
+            accepted_at TEXT NOT NULL,
+            completed_at TEXT,
+            claimed_at TEXT,
+            UNIQUE(user_id, task_id, accepted_at)
+        )
+        """
+        await self.db.execute(sql)
+
+        # 创建索引
+        await self.db.execute("""
+            CREATE INDEX IF NOT EXISTS idx_sect_member_tasks_user
+            ON sect_member_tasks(user_id, status)
+        """)
+
+        await self.db.execute("""
+            CREATE INDEX IF NOT EXISTS idx_sect_member_tasks_sect
+            ON sect_member_tasks(sect_id, status)
+        """)

@@ -471,6 +471,16 @@ class AlchemySystem:
         self.db = db
         self.player_mgr = player_mgr
         self.profession_mgr = profession_mgr
+        self.sect_sys = None  # 宗门系统（可选）
+
+    def set_sect_system(self, sect_sys):
+        """
+        设置宗门系统（用于加成计算）
+
+        Args:
+            sect_sys: 宗门系统实例
+        """
+        self.sect_sys = sect_sys
 
     async def init_base_recipes(self):
         """初始化基础丹方"""
@@ -573,6 +583,17 @@ class AlchemySystem:
                 success_rate += 0.20  # 木系+20%
             elif player.spirit_root_type == "光":
                 success_rate += 0.30  # 光系+30%
+
+        # 应用宗门加成
+        sect_bonus_rate = 0.0
+        if self.sect_sys:
+            try:
+                success_rate, sect_bonus_rate = await self.sect_sys.apply_sect_bonus(
+                    user_id, "alchemy_bonus", success_rate
+                )
+            except Exception as e:
+                # 如果宗门加成失败，记录日志但不影响炼丹
+                logger.warning(f"应用宗门加成失败: {e}")
 
         # 限制最高成功率
         success_rate = min(0.95, success_rate)
