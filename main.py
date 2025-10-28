@@ -101,6 +101,9 @@ class XiuxianPlugin(Star):
         # 坊市系统管理器
         self.market_sys = None
 
+        # 图片生成器
+        self.card_generator = None
+
         logger.info("修仙世界插件已加载 (使用懒加载模式)")
 
     @filter.on_astrbot_loaded()
@@ -191,6 +194,16 @@ class XiuxianPlugin(Star):
             self.alchemy_sys.set_sect_system(self.sect_sys)
             self.refining_sys.set_sect_system(self.sect_sys)
             logger.info("✓ 系统连接完成")
+
+            # 初始化图片生成器
+            try:
+                logger.info("🎨 正在初始化图片生成器...")
+                from .core.card_generator import CardGenerator
+                self.card_generator = CardGenerator()
+                logger.info("✓ 图片生成器初始化完成")
+            except Exception as e:
+                logger.warning(f"⚠ 图片生成器初始化失败（将使用文本模式）: {e}")
+                self.card_generator = None
 
             self._initialized = True
             logger.info("=" * 60)
@@ -344,6 +357,57 @@ class XiuxianPlugin(Star):
             # 获取玩家信息
             player = await self.player_mgr.get_player_or_error(user_id)
 
+            # 尝试使用图形化展示
+            if self.card_generator:
+                try:
+                    # 准备卡片数据
+                    player_data = {
+                        'name': player.name,
+                        'realm': player.realm,
+                        'realm_level': player.realm_level,
+                        'cultivation': player.cultivation,
+                        'max_cultivation': player.cultivation_required,
+                        'hp': player.hp,
+                        'max_hp': player.max_hp,
+                        'mp': player.mp,
+                        'max_mp': player.max_mp,
+                        'attack': player.attack,
+                        'defense': player.defense,
+                        'spirit_root': player.spirit_root,
+                        'spirit_root_quality': player.spirit_root_quality,
+                    }
+
+                    # 生成卡片
+                    import time
+                    card_image = self.card_generator.generate_player_card(player_data)
+
+                    # 保存图片
+                    filename = f"player_card_{user_id}_{int(time.time())}.png"
+                    filepath = self.card_generator.save_image(card_image, filename)
+
+                    # 尝试发送图片
+                    try:
+                        # 尝试使用 image_result (如果 AstrBot 支持)
+                        if hasattr(event, 'image_result'):
+                            yield event.image_result(str(filepath))
+                        else:
+                            # 如果不支持，发送文本提示
+                            yield event.plain_result(
+                                f"✅ 角色卡片已生成！\n"
+                                f"📸 图片路径：{filepath}\n\n"
+                                f"💡 您的平台可能不支持自动发送图片\n"
+                                f"💡 请手动查看上述路径的图片文件"
+                            )
+                        return  # 成功发送图片，直接返回
+                    except Exception as img_send_error:
+                        logger.warning(f"发送图片失败，使用文本模式: {img_send_error}")
+                        # 继续执行文本模式
+
+                except Exception as card_error:
+                    logger.warning(f"生成卡片失败，使用文本模式: {card_error}")
+                    # 继续执行文本模式
+
+            # 文本模式（降级方案）
             # 格式化玩家信息
             player_info = MessageFormatter.format_player_info(player)
 
