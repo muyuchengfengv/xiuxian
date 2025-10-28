@@ -24,7 +24,13 @@ class CombatCalculator:
         """
         计算玩家战力
 
-        战力公式：战力 = (境界加成 × 100) + (属性总和 × 10) + 装备评分
+        战力公式（指数增长）：
+        - 境界战力 = 基础战力 × 2^(境界序号-1) × (1 + 小境界加成)
+        - 属性战力 = 属性总和 × 境界倍率 × 5
+        - 总战力 = 境界战力 + 属性战力 + 装备评分
+
+        这样每提升一个大境界，战力翻倍！
+        例如：炼气期1000 → 筑基期2000 → 金丹期4000 → 元婴期8000
 
         Args:
             player: 玩家对象
@@ -33,15 +39,27 @@ class CombatCalculator:
         Returns:
             战力值
         """
-        # 1. 境界加成
+        # 1. 获取境界配置
         realm_config = REALMS.get(player.realm, REALMS["炼气期"])
         realm_index = realm_config["index"]
         realm_level = player.realm_level  # 1-4
 
-        # 境界加成 = 境界序号 * 10 + 小境界等级
-        realm_bonus = realm_index * 10 + realm_level
+        # 2. 境界倍率（指数增长）
+        # 炼气期(1) = 2^0 = 1倍
+        # 筑基期(2) = 2^1 = 2倍
+        # 金丹期(3) = 2^2 = 4倍
+        # 元婴期(4) = 2^3 = 8倍
+        # 以此类推...
+        realm_multiplier = 2 ** (realm_index - 1)
 
-        # 2. 属性总和
+        # 3. 小境界加成（0%-30%，每个小境界+10%）
+        level_bonus = (realm_level - 1) * 0.1
+
+        # 4. 境界战力
+        base_realm_power = 1000  # 基础战力
+        realm_power = base_realm_power * realm_multiplier * (1 + level_bonus)
+
+        # 5. 属性总和
         total_attributes = (
             player.constitution +
             player.spiritual_power +
@@ -50,10 +68,13 @@ class CombatCalculator:
             player.root_bone
         )
 
-        # 3. 计算战力
-        power = (realm_bonus * 100) + (total_attributes * 10) + equipment_score
+        # 6. 属性战力（属性也随境界指数增长）
+        attribute_power = total_attributes * realm_multiplier * 5
 
-        return int(power)
+        # 7. 计算总战力
+        total_power = realm_power + attribute_power + equipment_score
+
+        return int(total_power)
 
     @staticmethod
     def calculate_damage(

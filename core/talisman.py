@@ -67,8 +67,9 @@ class TalismanSystem:
         }
     }
 
-    # 基础符箓配置
+    # 基础符箓配置（扩充至22种）
     BASE_TALISMANS = [
+        # ========== 炼气期符箓 (Rank 1) ==========
         {
             "name": "火球符",
             "rank": 1,
@@ -142,6 +143,8 @@ class TalismanSystem:
             "cooldown_seconds": 0,
             "duration_days": 30
         },
+
+        # ========== 筑基期符箓 (Rank 2) ==========
         {
             "name": "五雷符",
             "rank": 2,
@@ -199,6 +202,8 @@ class TalismanSystem:
             "cooldown_seconds": 3600,  # 1小时冷却
             "duration_days": 60
         },
+
+        # ========== 金丹期符箓 (Rank 3) ==========
         {
             "name": "替身符",
             "rank": 3,
@@ -238,6 +243,315 @@ class TalismanSystem:
             }),
             "cooldown_seconds": 0,
             "duration_days": 90
+        },
+        {
+            "name": "大还丹符",
+            "rank": 3,
+            "talisman_type": "healing",
+            "description": "瞬间恢复3000点生命值和1500点法力值",
+            "materials": json.dumps([
+                {"name": "金符纸", "quantity": 1},
+                {"name": "百年灵芝", "quantity": 3},
+                {"name": "灵液", "quantity": 10}
+            ]),
+            "base_success_rate": 50,
+            "spirit_stone_cost": 600,
+            "effects": json.dumps({
+                "hp_restore": 3000,
+                "mp_restore": 1500
+            }),
+            "cooldown_seconds": 0,
+            "duration_days": 90
+        },
+
+        # ========== 元婴期符箓 (Rank 4) ==========
+        {
+            "name": "龙炎符",
+            "rank": 4,
+            "talisman_type": "attack",
+            "description": "释放真龙烈焰,造成3000点火系伤害",
+            "materials": json.dumps([
+                {"name": "玄符纸", "quantity": 1},
+                {"name": "龙血", "quantity": 1},
+                {"name": "四阶妖丹", "quantity": 1},
+                {"name": "火晶石", "quantity": 5}
+            ]),
+            "base_success_rate": 38,
+            "spirit_stone_cost": 1500,
+            "effects": json.dumps({
+                "damage": 3000,
+                "element": "dragon_fire",
+                "target": "large_area",
+                "burn_damage": 500
+            }),
+            "cooldown_seconds": 0,
+            "duration_days": 120
+        },
+        {
+            "name": "玄武盾符",
+            "rank": 4,
+            "talisman_type": "defense",
+            "description": "召唤玄武之盾,提供5000点护盾",
+            "materials": json.dumps([
+                {"name": "玄符纸", "quantity": 1},
+                {"name": "玄武甲片", "quantity": 3},
+                {"name": "防御符文", "quantity": 5}
+            ]),
+            "base_success_rate": 40,
+            "spirit_stone_cost": 1200,
+            "effects": json.dumps({
+                "shield": 5000,
+                "duration": 1800,
+                "reflect_damage": 0.2
+            }),
+            "cooldown_seconds": 0,
+            "duration_days": 120
+        },
+        {
+            "name": "隐身符",
+            "rank": 4,
+            "talisman_type": "special",
+            "description": "完全隐身,持续30分钟",
+            "materials": json.dumps([
+                {"name": "玄符纸", "quantity": 1},
+                {"name": "幻影石", "quantity": 5},
+                {"name": "虚空结晶", "quantity": 2}
+            ]),
+            "base_success_rate": 35,
+            "spirit_stone_cost": 2000,
+            "effects": json.dumps({
+                "invisibility": True,
+                "duration": 1800
+            }),
+            "cooldown_seconds": 7200,  # 2小时冷却
+            "duration_days": 120
+        },
+
+        # ========== 化神期符箓 (Rank 5) ==========
+        {
+            "name": "天罡雷符",
+            "rank": 5,
+            "talisman_type": "attack",
+            "description": "引动天罡神雷,造成8000点雷系伤害并麻痹敌人",
+            "materials": json.dumps([
+                {"name": "仙符纸", "quantity": 1},
+                {"name": "天雷石", "quantity": 10},
+                {"name": "五阶妖丹", "quantity": 2},
+                {"name": "神性结晶", "quantity": 1}
+            ]),
+            "base_success_rate": 30,
+            "spirit_stone_cost": 5000,
+            "effects": json.dumps({
+                "damage": 8000,
+                "element": "divine_thunder",
+                "target": "massive_area",
+                "paralyze": True,
+                "duration": 60
+            }),
+            "cooldown_seconds": 0,
+            "duration_days": 180
+        },
+        {
+            "name": "涅槃重生符",
+            "rank": 5,
+            "talisman_type": "healing",
+            "description": "死亡时自动复活并完全恢复生命值法力值",
+            "materials": json.dumps([
+                {"name": "仙符纸", "quantity": 1},
+                {"name": "凤凰精血", "quantity": 1},
+                {"name": "不死鸟羽", "quantity": 5},
+                {"name": "神性精华", "quantity": 3}
+            ]),
+            "base_success_rate": 25,
+            "spirit_stone_cost": 10000,
+            "effects": json.dumps({
+                "revive": True,
+                "hp_percent": 1.0,
+                "mp_percent": 1.0,
+                "invincible_seconds": 10
+            }),
+            "cooldown_seconds": 0,
+            "duration_days": 180
+        },
+        {
+            "name": "时空倒流符",
+            "rank": 5,
+            "talisman_type": "special",
+            "description": "时光倒流,撤销最近10秒内的伤害",
+            "materials": json.dumps([
+                {"name": "仙符纸", "quantity": 1},
+                {"name": "时空石", "quantity": 10},
+                {"name": "混沌石", "quantity": 3}
+            ]),
+            "base_success_rate": 20,
+            "spirit_stone_cost": 8000,
+            "effects": json.dumps({
+                "time_rewind": True,
+                "seconds": 10
+            }),
+            "cooldown_seconds": 0,
+            "duration_days": 180
+        },
+
+        # ========== 炼虚期符箓 (Rank 6) ==========
+        {
+            "name": "虚空破灭符",
+            "rank": 6,
+            "talisman_type": "attack",
+            "description": "撕裂虚空,造成20000点真实伤害(无视防御)",
+            "materials": json.dumps([
+                {"name": "道符纸", "quantity": 1},
+                {"name": "虚空结晶", "quantity": 20},
+                {"name": "六阶妖丹", "quantity": 5},
+                {"name": "混沌精华", "quantity": 3}
+            ]),
+            "base_success_rate": 22,
+            "spirit_stone_cost": 15000,
+            "effects": json.dumps({
+                "damage": 20000,
+                "element": "void",
+                "target": "massive_area",
+                "ignore_defense": True,
+                "void_damage": True
+            }),
+            "cooldown_seconds": 0,
+            "duration_days": 240
+        },
+        {
+            "name": "万法护体符",
+            "rank": 6,
+            "talisman_type": "defense",
+            "description": "免疫一切伤害30秒",
+            "materials": json.dumps([
+                {"name": "道符纸", "quantity": 1},
+                {"name": "归元石", "quantity": 15},
+                {"name": "混沌精华", "quantity": 5}
+            ]),
+            "base_success_rate": 18,
+            "spirit_stone_cost": 20000,
+            "effects": json.dumps({
+                "invincible": True,
+                "duration": 30,
+                "immunity": "all"
+            }),
+            "cooldown_seconds": 86400,  # 24小时冷却
+            "duration_days": 240
+        },
+
+        # ========== 合体期符箓 (Rank 7) ==========
+        {
+            "name": "乾坤一掷符",
+            "rank": 7,
+            "talisman_type": "attack",
+            "description": "倾尽乾坤之力,造成50000点毁灭性伤害",
+            "materials": json.dumps([
+                {"name": "天符纸", "quantity": 1},
+                {"name": "乾坤石", "quantity": 10},
+                {"name": "七阶妖丹", "quantity": 10},
+                {"name": "天地本源", "quantity": 3}
+            ]),
+            "base_success_rate": 15,
+            "spirit_stone_cost": 40000,
+            "effects": json.dumps({
+                "damage": 50000,
+                "element": "cosmic",
+                "target": "ultimate_area",
+                "devastating": True
+            }),
+            "cooldown_seconds": 0,
+            "duration_days": 365
+        },
+        {
+            "name": "天地同寿符",
+            "rank": 7,
+            "talisman_type": "assist",
+            "description": "全属性提升100%,持续1小时",
+            "materials": json.dumps([
+                {"name": "天符纸", "quantity": 1},
+                {"name": "天地本源", "quantity": 5},
+                {"name": "不灭金", "quantity": 10}
+            ]),
+            "base_success_rate": 18,
+            "spirit_stone_cost": 30000,
+            "effects": json.dumps({
+                "all_stats_boost": 1.0,
+                "duration": 3600
+            }),
+            "cooldown_seconds": 0,
+            "duration_days": 365
+        },
+
+        # ========== 大乘期符箓 (Rank 8) ==========
+        {
+            "name": "弑神符",
+            "rank": 8,
+            "talisman_type": "attack",
+            "description": "弑神之力,造成100000点神性伤害",
+            "materials": json.dumps([
+                {"name": "仙道符纸", "quantity": 1},
+                {"name": "弑神石", "quantity": 20},
+                {"name": "八阶妖丹", "quantity": 15},
+                {"name": "仙晶", "quantity": 30},
+                {"name": "鸿蒙紫气", "quantity": 2}
+            ]),
+            "base_success_rate": 12,
+            "spirit_stone_cost": 100000,
+            "effects": json.dumps({
+                "damage": 100000,
+                "element": "divine_slaying",
+                "target": "ultimate_area",
+                "god_slaying": True,
+                "bonus_vs_immortal": 1.5
+            }),
+            "cooldown_seconds": 0,
+            "duration_days": 720
+        },
+
+        # ========== 渡劫期符箓 (Rank 9) ==========
+        {
+            "name": "天道符",
+            "rank": 9,
+            "talisman_type": "special",
+            "description": "沟通天道,抵挡一次天劫伤害",
+            "materials": json.dumps([
+                {"name": "混沌符纸", "quantity": 1},
+                {"name": "天道碎片", "quantity": 1},
+                {"name": "九阶妖丹", "quantity": 20},
+                {"name": "鸿蒙紫气", "quantity": 10}
+            ]),
+            "base_success_rate": 8,
+            "spirit_stone_cost": 200000,
+            "effects": json.dumps({
+                "tribulation_shield": True,
+                "resist_tribulation": 0.5,
+                "heavenly_blessing": True
+            }),
+            "cooldown_seconds": 0,
+            "duration_days": 1000
+        },
+        {
+            "name": "混沌灭世符",
+            "rank": 9,
+            "talisman_type": "attack",
+            "description": "混沌本源,毁灭一切,造成300000点混沌伤害",
+            "materials": json.dumps([
+                {"name": "混沌符纸", "quantity": 1},
+                {"name": "混沌本源", "quantity": 1},
+                {"name": "开天石", "quantity": 10},
+                {"name": "鸿蒙紫气", "quantity": 15},
+                {"name": "天道碎片", "quantity": 3}
+            ]),
+            "base_success_rate": 5,
+            "spirit_stone_cost": 500000,
+            "effects": json.dumps({
+                "damage": 300000,
+                "element": "chaos",
+                "target": "apocalypse",
+                "destroy_all": True,
+                "chaos_power": True
+            }),
+            "cooldown_seconds": 0,
+            "duration_days": 1000
         }
     ]
 

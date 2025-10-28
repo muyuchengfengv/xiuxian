@@ -38,11 +38,12 @@ class DatabaseManager:
             # 创建表
             await self._create_tables()
 
-            # 执行数据库迁移（添加新字段）
-            await self._migrate_database()
-
+  
             # 创建索引
             await self._create_indexes()
+
+            # 初始化基础地点数据
+            await self._seed_initial_locations()
 
             logger.info("数据库初始化完成")
 
@@ -382,6 +383,41 @@ class DatabaseManager:
         """)
         logger.info("创建表: profession_exams")
 
+        # 地点表
+        await self.execute("""
+            CREATE TABLE IF NOT EXISTS locations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                description TEXT NOT NULL,
+                region_type TEXT NOT NULL,
+                danger_level INTEGER DEFAULT 1,
+                spirit_energy_density INTEGER DEFAULT 50,
+                min_realm TEXT DEFAULT '炼气期',
+                coordinates_x INTEGER DEFAULT 0,
+                coordinates_y INTEGER DEFAULT 0,
+                resources TEXT,
+                connected_locations TEXT,
+                is_safe_zone INTEGER DEFAULT 0,
+                discovered_by TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        logger.info("创建表: locations")
+
+        # 玩家位置表
+        await self.execute("""
+            CREATE TABLE IF NOT EXISTS player_locations (
+                user_id TEXT PRIMARY KEY,
+                current_location_id INTEGER NOT NULL,
+                last_move_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                total_moves INTEGER DEFAULT 0,
+                total_exploration_score INTEGER DEFAULT 0,
+                FOREIGN KEY (user_id) REFERENCES players(user_id),
+                FOREIGN KEY (current_location_id) REFERENCES locations(id)
+            )
+        """)
+        logger.info("创建表: player_locations")
+
     async def _create_indexes(self):
         """创建索引以优化查询性能"""
         indexes = [
@@ -401,6 +437,10 @@ class DatabaseManager:
             "CREATE INDEX IF NOT EXISTS idx_tribulations_status ON tribulations(user_id, status)",
             "CREATE INDEX IF NOT EXISTS idx_active_formations_user ON active_formations(user_id)",
             "CREATE INDEX IF NOT EXISTS idx_active_formations_location ON active_formations(location_id, is_active)",
+            "CREATE INDEX IF NOT EXISTS idx_locations_region ON locations(region_type)",
+            "CREATE INDEX IF NOT EXISTS idx_locations_danger ON locations(danger_level)",
+            "CREATE INDEX IF NOT EXISTS idx_player_locations_user ON player_locations(user_id)",
+            "CREATE INDEX IF NOT EXISTS idx_player_locations_location ON player_locations(current_location_id)",
         ]
 
         for index_sql in indexes:
@@ -430,11 +470,199 @@ class DatabaseManager:
                 "INTEGER DEFAULT 0"
             )
 
+            # 检查 sects 表是否需要添加 power 字段
+            # power 字段用于存储宗门实力值(所有成员战力总和)
+            await self._add_column_if_not_exists(
+                "sects",
+                "power",
+                "INTEGER DEFAULT 0"
+            )
+
+            # 检查 cultivation_methods 表是否需要添加 owner_id 字段
+            # owner_id 用于标识功法拥有者
+            await self._add_column_if_not_exists(
+                "cultivation_methods",
+                "owner_id",
+                "TEXT"
+            )
+
+            # 如果 cultivation_methods 表中存在 user_id 列但没有 owner_id，
+            # 需要将 user_id 的值复制到 owner_id
+            if await self.table_exists("cultivation_methods"):
+                table_info = await self.get_table_info("cultivation_methods")
+                has_user_id = any(col['name'] == 'user_id' for col in table_info)
+                has_owner_id = any(col['name'] == 'owner_id' for col in table_info)
+
+                if has_user_id and has_owner_id:
+                    # 将 user_id 的值复制到 owner_id (如果 owner_id 为空)
+                    await self.execute(
+                        "UPDATE cultivation_methods SET owner_id = user_id WHERE owner_id IS NULL"
+                    )
+                    logger.info("已将 cultivation_methods 表中的 user_id 复制到 owner_id")
+
             logger.info("数据库迁移完成")
 
         except Exception as e:
             logger.error(f"数据库迁移失败: {e}", exc_info=True)
             # 迁移失败不应该中断初始化，只记录错误
+            pass
+
+    async def _seed_initial_locations(self):
+        """初始化基础地点数据"""
+        try:
+            # 检查是否已经有地点数据
+            cursor = await self.execute("SELECT COUNT(*) as count FROM locations")
+            row = await cursor.fetchone()
+
+            if row and row['count'] > 0:
+                # 已有地点数据，跳过初始化
+                return
+
+            logger.info("开始初始化基础地点...")
+
+            # 初始地点列表
+            initial_locations = [
+                {
+                    'name': '新手村',
+                    'description': '一个宁静祥和的小村落，灵气稀薄但十分安全，是众多修仙者踏上修仙之路的起点。村中有简陋的修炼场和基础的药材商铺。',
+                    'region_type': 'city',
+                    'danger_level': 1,
+                    'spirit_energy_density': 20,
+                    'min_realm': '炼气期',
+                    'coordinates_x': 0,
+                    'coordinates_y': 0,
+                    'is_safe_zone': 1,
+                    'connected_locations': '[2,3]'
+                },
+                {
+                    'name': '青云山',
+                    'description': '一座云雾缭绕的灵山，山间灵气充沛，适合低阶修士修炼。山中偶有低阶妖兽出没，需要小心应对。',
+                    'region_type': 'mountain',
+                    'danger_level': 3,
+                    'spirit_energy_density': 45,
+                    'min_realm': '炼气期',
+                    'coordinates_x': 10,
+                    'coordinates_y': 20,
+                    'is_safe_zone': 0,
+                    'connected_locations': '[1,4,5]'
+                },
+                {
+                    'name': '灵泉谷',
+                    'description': '山谷深处有一眼灵泉，常年喷涌着富含灵气的泉水。谷中药草丰茂，是采集灵药的好去处。',
+                    'region_type': 'forest',
+                    'danger_level': 2,
+                    'spirit_energy_density': 40,
+                    'min_realm': '炼气期',
+                    'coordinates_x': -15,
+                    'coordinates_y': 10,
+                    'is_safe_zone': 0,
+                    'connected_locations': '[1,6]'
+                },
+                {
+                    'name': '天元城',
+                    'description': '修仙界繁华的交易中心，城中有各种店铺、拍卖行和任务大厅。城内禁止私斗，是修士们的安全港湾。',
+                    'region_type': 'city',
+                    'danger_level': 1,
+                    'spirit_energy_density': 35,
+                    'min_realm': '筑基期',
+                    'coordinates_x': 50,
+                    'coordinates_y': 0,
+                    'is_safe_zone': 1,
+                    'connected_locations': '[2,5,7]'
+                },
+                {
+                    'name': '紫雷峰',
+                    'description': '常年雷霆轰鸣的险峰，峰顶灵气浓郁但危机四伏。适合筑基期修士突破境界，但需警惕雷劫。',
+                    'region_type': 'mountain',
+                    'danger_level': 5,
+                    'spirit_energy_density': 60,
+                    'min_realm': '筑基期',
+                    'coordinates_x': 30,
+                    'coordinates_y': 40,
+                    'is_safe_zone': 0,
+                    'connected_locations': '[2,4,8]'
+                },
+                {
+                    'name': '幽暗森林',
+                    'description': '古老而神秘的原始森林，林中妖兽众多，灵药珍稀。深处传说有上古修士的洞府遗迹。',
+                    'region_type': 'forest',
+                    'danger_level': 4,
+                    'spirit_energy_density': 50,
+                    'min_realm': '筑基期',
+                    'coordinates_x': -30,
+                    'coordinates_y': 25,
+                    'is_safe_zone': 0,
+                    'connected_locations': '[3,9]'
+                },
+                {
+                    'name': '碧波湖',
+                    'description': '广阔无垠的灵湖，湖水蕴含水系灵气，湖底有水晶矿脉。水系修士在此修炼事半功倍。',
+                    'region_type': 'ocean',
+                    'danger_level': 3,
+                    'spirit_energy_density': 55,
+                    'min_realm': '筑基期',
+                    'coordinates_x': 40,
+                    'coordinates_y': -20,
+                    'is_safe_zone': 0,
+                    'connected_locations': '[4]'
+                },
+                {
+                    'name': '烈焰山',
+                    'description': '终年喷发岩浆的活火山，火系灵气极为浓郁。火系修士的修炼圣地，但常人难以靠近。',
+                    'region_type': 'mountain',
+                    'danger_level': 6,
+                    'spirit_energy_density': 70,
+                    'min_realm': '金丹期',
+                    'coordinates_x': 60,
+                    'coordinates_y': 60,
+                    'is_safe_zone': 0,
+                    'connected_locations': '[5,10]'
+                },
+                {
+                    'name': '迷雾沼泽',
+                    'description': '终年笼罩在毒雾中的危险沼泽，瘴气弥漫，毒虫横行。但沼泽深处生长着珍贵的炼丹灵药。',
+                    'region_type': 'forest',
+                    'danger_level': 7,
+                    'spirit_energy_density': 45,
+                    'min_realm': '金丹期',
+                    'coordinates_x': -50,
+                    'coordinates_y': 50,
+                    'is_safe_zone': 0,
+                    'connected_locations': '[6]'
+                },
+                {
+                    'name': '虚空裂隙',
+                    'description': '空间法则紊乱的神秘区域，时有空间风暴肆虐。传说中通往其他世界的通道，只有元婴期以上修士才敢涉足。',
+                    'region_type': 'void',
+                    'danger_level': 9,
+                    'spirit_energy_density': 85,
+                    'min_realm': '元婴期',
+                    'coordinates_x': 100,
+                    'coordinates_y': 100,
+                    'is_safe_zone': 0,
+                    'connected_locations': '[8]'
+                }
+            ]
+
+            # 插入初始地点
+            for loc in initial_locations:
+                await self.execute("""
+                    INSERT INTO locations (
+                        name, description, region_type, danger_level,
+                        spirit_energy_density, min_realm, coordinates_x, coordinates_y,
+                        is_safe_zone, connected_locations
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    loc['name'], loc['description'], loc['region_type'],
+                    loc['danger_level'], loc['spirit_energy_density'],
+                    loc['min_realm'], loc['coordinates_x'], loc['coordinates_y'],
+                    loc['is_safe_zone'], loc['connected_locations']
+                ))
+
+            logger.info(f"成功初始化 {len(initial_locations)} 个基础地点")
+
+        except Exception as e:
+            logger.error(f"初始化基础地点失败: {e}", exc_info=True)
             pass
 
     async def _add_column_if_not_exists(self, table_name: str, column_name: str, column_type: str):

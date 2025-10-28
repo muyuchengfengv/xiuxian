@@ -19,6 +19,7 @@ from .core.ai_generator import AIGenerator, AIGenerationError, ContentNotAvailab
 from .core.cultivation_method import CultivationMethodSystem, MethodNotFoundError, MethodNotOwnError, MethodAlreadyEquippedError, SlotOccupiedError
 from .core.sect import SectSystem, SectError, SectNotFoundError, SectNameExistsError, NotSectMemberError, AlreadyInSectError, InsufficientPermissionError, InsufficientResourceError, SectFullError
 from .core.tribulation import TribulationSystem, TribulationError, TribulationNotFoundError, TribulationInProgressError, NoTribulationRequiredError, InsufficientHPError
+from .core.world import WorldManager, WorldException, LocationNotFoundError, InvalidMoveError, MoveCooldownError
 
 # 导入职业系统模块
 from .core.profession import ProfessionManager, ProfessionError, AlreadyLearnedError, InsufficientLevelError, ProfessionNotFoundError
@@ -79,6 +80,7 @@ class XiuxianPlugin(Star):
         self.sect_sys = None
         self.ai_generator = None
         self.tribulation_sys = None
+        self.world_mgr = None
 
         # 职业系统管理器
         self.profession_mgr = None
@@ -130,6 +132,7 @@ class XiuxianPlugin(Star):
             self.sect_sys = SectSystem(self.db, self.player_mgr)
             self.ai_generator = AIGenerator(self.db, self.player_mgr)
             self.tribulation_sys = TribulationSystem(self.db, self.player_mgr)
+            self.world_mgr = WorldManager(self.db, self.player_mgr)
             logger.info("✓ 核心系统初始化完成")
 
             # 初始化职业系统
@@ -2081,6 +2084,213 @@ class XiuxianPlugin(Star):
             logger.error(f"查看天劫统计失败: {e}", exc_info=True)
             yield event.plain_result(f"查看天劫统计失败：{str(e)}")
 
+    # ========== 世界探索系统命令 ==========
+
+    @filter.command("地点", alias={"locations", "where", "位置"})
+    async def locations_cmd(self, event: AstrMessageEvent):
+        """查看当前可到达的地点"""
+        user_id = event.get_sender_id()
+
+        try:
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
+            formatted = await self.world_mgr.format_location_list(user_id)
+            yield event.plain_result(formatted)
+
+        except PlayerNotFoundError:
+            yield event.plain_result("您还没有创建角色，请先使用 /修仙 创建角色")
+        except Exception as e:
+            logger.error(f"查看地点失败: {e}", exc_info=True)
+            yield event.plain_result(f"查看地点失败：{str(e)}")
+
+    @filter.command("地图", alias={"map", "世界地图"})
+    async def world_map_cmd(self, event: AstrMessageEvent):
+        """查看世界地图"""
+        user_id = event.get_sender_id()
+
+        try:
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
+            formatted = await self.world_mgr.format_world_map(user_id)
+            yield event.plain_result(formatted)
+
+        except PlayerNotFoundError:
+            yield event.plain_result("您还没有创建角色，请先使用 /修仙 创建角色")
+        except Exception as e:
+            logger.error(f"查看地图失败: {e}", exc_info=True)
+            yield event.plain_result(f"查看地图失败：{str(e)}")
+
+    @filter.command("前往", alias={"move", "go", "移动"})
+    async def move_cmd(self, event: AstrMessageEvent):
+        """前往指定地点"""
+        user_id = event.get_sender_id()
+        message_text = self._get_message_text(event)
+
+        try:
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
+            # 解析目标地点
+            parts = message_text.split()
+            if len(parts) < 2:
+                yield event.plain_result(
+                    "🗺️ 移动到其他地点\n\n"
+                    "请指定要前往的地点编号\n\n"
+                    "💡 使用方法: /前往 [编号]\n"
+                    "💡 例如: /前往 2\n\n"
+                    "💡 使用 /地点 查看可到达的地点"
+                )
+                return
+
+            try:
+                destination_index = int(parts[1])
+            except ValueError:
+                yield event.plain_result("❌ 地点编号必须是数字！")
+                return
+
+            # 获取可到达的地点列表
+            current_loc, _ = await self.world_mgr.get_player_location(user_id)
+            connected_locs = await self.world_mgr.get_connected_locations(current_loc)
+
+            if destination_index < 1 or destination_index > len(connected_locs):
+                yield event.plain_result(
+                    f"❌ 地点编号 {destination_index} 不存在！\n\n"
+                    f"💡 可选编号范围：1-{len(connected_locs)}"
+                )
+                return
+
+            destination = connected_locs[destination_index - 1]
+
+            # 执行移动
+            result = await self.world_mgr.move_to(user_id, destination.id)
+
+            lines = [
+                f"🚶 从 {result['from_location']} 前往 {result['to_location']}",
+                "",
+                result['destination'].get_display_info(),
+                "",
+                f"🚶 移动次数: {result['move_count']}"
+            ]
+
+            if result.get('encounter'):
+                encounter = result['encounter']
+                lines.extend([
+                    "",
+                    f"⚠️ {encounter['description']}"
+                ])
+
+            yield event.plain_result("\n".join(lines))
+
+        except PlayerNotFoundError:
+            yield event.plain_result("您还没有创建角色，请先使用 /修仙 创建角色")
+        except MoveCooldownError as e:
+            yield event.plain_result(f"⏰ {str(e)}")
+        except InvalidMoveError as e:
+            yield event.plain_result(f"❌ {str(e)}")
+        except WorldException as e:
+            yield event.plain_result(f"⚠️ {str(e)}")
+        except Exception as e:
+            logger.error(f"移动失败: {e}", exc_info=True)
+            yield event.plain_result(f"移动失败：{str(e)}")
+
+    @filter.command("探索", alias={"explore", "搜索"})
+    async def explore_cmd(self, event: AstrMessageEvent):
+        """探索当前地点"""
+        user_id = event.get_sender_id()
+
+        try:
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
+            result = await self.world_mgr.explore_current_location(user_id)
+
+            lines = [
+                f"🔍 探索 {result['location'].name}",
+                "─" * 40,
+                ""
+            ]
+
+            if result['discoveries']:
+                lines.append("🎁 发现:")
+                for discovery in result['discoveries']:
+                    lines.append(f"   {discovery['description']}")
+                lines.append("")
+
+            if result['encounters']:
+                lines.append("⚠️ 遭遇:")
+                for encounter in result['encounters']:
+                    lines.append(f"   {encounter['description']}")
+                lines.append("")
+
+            if not result['discoveries'] and not result['encounters']:
+                lines.append("🌫️ 什么也没有发现...")
+                lines.append("")
+
+            if result['rewards'].get('spirit_stone', 0) > 0:
+                # TODO: 实际发放灵石奖励
+                lines.append(f"💎 获得灵石: +{result['rewards']['spirit_stone']}")
+
+            yield event.plain_result("\n".join(lines))
+
+        except PlayerNotFoundError:
+            yield event.plain_result("您还没有创建角色，请先使用 /修仙 创建角色")
+        except WorldException as e:
+            yield event.plain_result(f"⚠️ {str(e)}")
+        except Exception as e:
+            logger.error(f"探索失败: {e}", exc_info=True)
+            yield event.plain_result(f"探索失败：{str(e)}")
+
+    @filter.command("地点详情", alias={"location_info", "地点信息"})
+    async def location_info_cmd(self, event: AstrMessageEvent):
+        """查看地点详细信息"""
+        user_id = event.get_sender_id()
+        message_text = self._get_message_text(event)
+
+        try:
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
+            parts = message_text.split()
+            if len(parts) < 2:
+                # 显示当前地点详情
+                current_loc, _ = await self.world_mgr.get_player_location(user_id)
+                yield event.plain_result(current_loc.get_display_info(show_coordinates=True))
+                return
+
+            # 解析地点编号或名称
+            location = None
+            try:
+                # 尝试作为编号解析
+                location_index = int(parts[1])
+                current_loc, _ = await self.world_mgr.get_player_location(user_id)
+                connected_locs = await self.world_mgr.get_connected_locations(current_loc)
+
+                if 1 <= location_index <= len(connected_locs):
+                    location = connected_locs[location_index - 1]
+            except ValueError:
+                # 作为名称解析
+                location_name = " ".join(parts[1:])
+                location = await self.world_mgr.get_location_by_name(location_name)
+
+            if not location:
+                yield event.plain_result("❌ 地点不存在或无法查看")
+                return
+
+            yield event.plain_result(location.get_display_info(show_coordinates=True))
+
+        except PlayerNotFoundError:
+            yield event.plain_result("您还没有创建角色，请先使用 /修仙 创建角色")
+        except Exception as e:
+            logger.error(f"查看地点详情失败: {e}", exc_info=True)
+            yield event.plain_result(f"查看地点详情失败：{str(e)}")
+
     @filter.command("修仙帮助", alias={"xiuxian", "help"})
     async def help_cmd(self, event: AstrMessageEvent):
         """显示帮助信息"""
@@ -2089,6 +2299,7 @@ class XiuxianPlugin(Star):
 修炼: /修炼 单次修炼 | /闭关[时长] /出关 /闭关信息
 战斗: /切磋@用户 /战力
 装备: /背包 /装备[#] /卸下[槽位]
+世界: /地点 /地图 /前往[#] /探索 /地点详情
 职业: /学习职业[类型] /我的职业
 炼丹: /丹方列表 /炼丹[#]
 炼器: /图纸列表 /炼器[#]

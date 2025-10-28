@@ -146,7 +146,7 @@ class CultivationMethodSystem:
         """从模板创建功法"""
         method = CultivationMethod(
             id=str(uuid.uuid4()),
-            user_id=user_id,
+            owner_id=user_id,
             name=template["name"],
             description=template["description"],
             method_type=template.get("method_type", "attack"),

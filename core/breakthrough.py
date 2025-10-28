@@ -16,6 +16,7 @@ from ..utils import (
     BreakthroughFailedError,
     get_next_realm,
     get_cultivation_required,
+    get_realm_level_name,
     REALM_LEVEL_NAMES
 )
 
@@ -79,7 +80,6 @@ class BreakthroughSystem:
             raise BreakthroughFailedError("当前条件不满足突破要求")
 
         # 3. 记录原始境界
-        from .constants import get_realm_level_name
         old_realm_name = get_realm_level_name(player.realm, player.realm_level)
         old_realm = f"{player.realm}{old_realm_name}"
         new_realm = next_realm_info['name']
@@ -183,7 +183,6 @@ class BreakthroughSystem:
         can_breakthrough = player.cultivation >= required_cultivation
 
         # 获取境界名称
-        from .constants import get_realm_level_name
         realm_name = f"{next_realm}" if next_level == 1 else f"{player.realm}"
         level_name = get_realm_level_name(next_realm, next_level)
         full_name = f"{realm_name}{level_name}"
@@ -274,7 +273,6 @@ class BreakthroughSystem:
         success_rate, rate_factors = CombatCalculator.calculate_breakthrough_rate(player)
 
         # 计算当前境界全名
-        from .constants import get_realm_level_name
         current_realm_name = get_realm_level_name(player.realm, player.realm_level)
         current_full_realm = f"{player.realm}{current_realm_name}"
 

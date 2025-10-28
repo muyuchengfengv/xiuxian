@@ -47,8 +47,9 @@ class RefiningSystem:
         "神品": {"attribute_multiplier": 5.0, "probability": 0.01}
     }
 
-    # 基础图纸配置
+    # 基础图纸配置（大幅扩充至28种）
     BASE_BLUEPRINTS = [
+        # ========== 炼气期装备 (Rank 1) ==========
         {
             "name": "玄铁剑",
             "rank": 1,
@@ -60,7 +61,7 @@ class RefiningSystem:
             ]),
             "output_name": "玄铁剑",
             "output_quality": "灵品",
-            "base_success_rate": 60,
+            "base_success_rate": 70,
             "equipment_type": "weapon",
             "base_attributes": json.dumps({
                 "attack": 50,
@@ -78,7 +79,7 @@ class RefiningSystem:
             ]),
             "output_name": "护体战袍",
             "output_quality": "灵品",
-            "base_success_rate": 60,
+            "base_success_rate": 70,
             "equipment_type": "armor",
             "base_attributes": json.dumps({
                 "attack": 0,
@@ -87,23 +88,463 @@ class RefiningSystem:
             })
         },
         {
+            "name": "灵玉佩",
+            "rank": 1,
+            "description": "普通的灵玉饰品",
+            "recipe_type": "refining",
+            "materials": json.dumps([
+                {"name": "灵玉", "quantity": 2},
+                {"name": "银丝", "quantity": 1}
+            ]),
+            "output_name": "灵玉佩",
+            "output_quality": "灵品",
+            "base_success_rate": 65,
+            "equipment_type": "accessory",
+            "base_attributes": json.dumps({
+                "attack": 10,
+                "defense": 10,
+                "mp_bonus": 50
+            })
+        },
+
+        # ========== 筑基期装备 (Rank 2) ==========
+        {
+            "name": "青锋剑",
+            "rank": 2,
+            "description": "筑基期修士常用的法剑",
+            "recipe_type": "refining",
+            "materials": json.dumps([
+                {"name": "寒铁", "quantity": 10},
+                {"name": "秘银", "quantity": 5},
+                {"name": "灵石", "quantity": 20}
+            ]),
+            "output_name": "青锋剑",
+            "output_quality": "宝品",
+            "base_success_rate": 60,
+            "equipment_type": "weapon",
+            "base_attributes": json.dumps({
+                "attack": 150,
+                "defense": 0,
+                "hp_bonus": 100
+            })
+        },
+        {
+            "name": "流云甲",
+            "rank": 2,
+            "description": "轻若云朵的防护甲胄",
+            "recipe_type": "refining",
+            "materials": json.dumps([
+                {"name": "二阶兽皮", "quantity": 8},
+                {"name": "秘银", "quantity": 3},
+                {"name": "云纹石", "quantity": 5}
+            ]),
+            "output_name": "流云甲",
+            "output_quality": "宝品",
+            "base_success_rate": 60,
+            "equipment_type": "armor",
+            "base_attributes": json.dumps({
+                "attack": 0,
+                "defense": 100,
+                "hp_bonus": 800
+            })
+        },
+        {
             "name": "聚灵戒指",
             "rank": 2,
             "description": "能够聚集灵气的法戒",
             "recipe_type": "refining",
             "materials": json.dumps([
-                {"name": "灵玉", "quantity": 2},
-                {"name": "秘银", "quantity": 1},
-                {"name": "灵石", "quantity": 10}
+                {"name": "灵玉", "quantity": 5},
+                {"name": "秘银", "quantity": 2},
+                {"name": "灵石", "quantity": 30}
             ]),
             "output_name": "聚灵戒指",
             "output_quality": "宝品",
-            "base_success_rate": 50,
+            "base_success_rate": 55,
             "equipment_type": "accessory",
             "base_attributes": json.dumps({
-                "attack": 10,
-                "defense": 10,
-                "mp_bonus": 100
+                "attack": 30,
+                "defense": 30,
+                "mp_bonus": 300
+            })
+        },
+
+        # ========== 金丹期装备 (Rank 3) ==========
+        {
+            "name": "赤炎剑",
+            "rank": 3,
+            "description": "蕴含火焰之力的金丹期法剑",
+            "recipe_type": "refining",
+            "materials": json.dumps([
+                {"name": "赤炎铁", "quantity": 20},
+                {"name": "火晶石", "quantity": 10},
+                {"name": "三阶妖丹", "quantity": 2},
+                {"name": "秘银", "quantity": 10}
+            ]),
+            "output_name": "赤炎剑",
+            "output_quality": "仙品",
+            "base_success_rate": 50,
+            "equipment_type": "weapon",
+            "base_attributes": json.dumps({
+                "attack": 400,
+                "defense": 0,
+                "hp_bonus": 300,
+                "special": "火焰伤害+20%"
+            })
+        },
+        {
+            "name": "金刚战甲",
+            "rank": 3,
+            "description": "坚如金刚的金丹期防具",
+            "recipe_type": "refining",
+            "materials": json.dumps([
+                {"name": "金刚石", "quantity": 15},
+                {"name": "三阶兽皮", "quantity": 12},
+                {"name": "精金", "quantity": 10}
+            ]),
+            "output_name": "金刚战甲",
+            "output_quality": "仙品",
+            "base_success_rate": 50,
+            "equipment_type": "armor",
+            "base_attributes": json.dumps({
+                "attack": 0,
+                "defense": 300,
+                "hp_bonus": 2000
+            })
+        },
+        {
+            "name": "紫金冠",
+            "rank": 3,
+            "description": "提升神识的紫金法冠",
+            "recipe_type": "refining",
+            "materials": json.dumps([
+                {"name": "紫金", "quantity": 8},
+                {"name": "灵玉", "quantity": 10},
+                {"name": "神识石", "quantity": 5}
+            ]),
+            "output_name": "紫金冠",
+            "output_quality": "仙品",
+            "base_success_rate": 45,
+            "equipment_type": "accessory",
+            "base_attributes": json.dumps({
+                "attack": 80,
+                "defense": 80,
+                "mp_bonus": 1000
+            })
+        },
+
+        # ========== 元婴期装备 (Rank 4) ==========
+        {
+            "name": "龙吟剑",
+            "rank": 4,
+            "description": "剑鸣如龙的元婴期至宝",
+            "recipe_type": "refining",
+            "materials": json.dumps([
+                {"name": "龙鳞铁", "quantity": 30},
+                {"name": "龙晶", "quantity": 15},
+                {"name": "四阶妖丹", "quantity": 5},
+                {"name": "万年寒铁", "quantity": 10}
+            ]),
+            "output_name": "龙吟剑",
+            "output_quality": "神品",
+            "base_success_rate": 40,
+            "equipment_type": "weapon",
+            "base_attributes": json.dumps({
+                "attack": 1000,
+                "defense": 100,
+                "hp_bonus": 1000,
+                "special": "攻击附带龙威"
+            })
+        },
+        {
+            "name": "玄龟甲",
+            "rank": 4,
+            "description": "防御无双的玄龟之甲",
+            "recipe_type": "refining",
+            "materials": json.dumps([
+                {"name": "玄龟甲片", "quantity": 20},
+                {"name": "四阶兽皮", "quantity": 15},
+                {"name": "防御符文", "quantity": 10}
+            ]),
+            "output_name": "玄龟甲",
+            "output_quality": "神品",
+            "base_success_rate": 40,
+            "equipment_type": "armor",
+            "base_attributes": json.dumps({
+                "attack": 0,
+                "defense": 800,
+                "hp_bonus": 5000
+            })
+        },
+        {
+            "name": "元婴镜",
+            "rank": 4,
+            "description": "映照元婴的神秘法宝",
+            "recipe_type": "refining",
+            "materials": json.dumps([
+                {"name": "神玉", "quantity": 20},
+                {"name": "镜心石", "quantity": 10},
+                {"name": "元婴精华", "quantity": 3}
+            ]),
+            "output_name": "元婴镜",
+            "output_quality": "神品",
+            "base_success_rate": 35,
+            "equipment_type": "accessory",
+            "base_attributes": json.dumps({
+                "attack": 200,
+                "defense": 200,
+                "mp_bonus": 3000,
+                "special": "反射法术伤害10%"
+            })
+        },
+
+        # ========== 化神期装备 (Rank 5) ==========
+        {
+            "name": "神魔剑",
+            "rank": 5,
+            "description": "化神期顶尖武器，集神魔之力于一身",
+            "recipe_type": "refining",
+            "materials": json.dumps([
+                {"name": "神魔铁", "quantity": 50},
+                {"name": "神性结晶", "quantity": 20},
+                {"name": "五阶妖丹", "quantity": 10},
+                {"name": "混沌石", "quantity": 5}
+            ]),
+            "output_name": "神魔剑",
+            "output_quality": "道品",
+            "base_success_rate": 30,
+            "equipment_type": "weapon",
+            "base_attributes": json.dumps({
+                "attack": 2500,
+                "defense": 300,
+                "hp_bonus": 3000,
+                "special": "攻击附带神魔之力"
+            })
+        },
+        {
+            "name": "化神袍",
+            "rank": 5,
+            "description": "融合神性的化神期法袍",
+            "recipe_type": "refining",
+            "materials": json.dumps([
+                {"name": "神兽皮", "quantity": 30},
+                {"name": "神性丝线", "quantity": 50},
+                {"name": "防御符文", "quantity": 20}
+            ]),
+            "output_name": "化神袍",
+            "output_quality": "道品",
+            "base_success_rate": 30,
+            "equipment_type": "armor",
+            "base_attributes": json.dumps({
+                "attack": 200,
+                "defense": 2000,
+                "hp_bonus": 10000,
+                "mp_bonus": 2000
+            })
+        },
+        {
+            "name": "混沌珠",
+            "rank": 5,
+            "description": "蕴含混沌之力的至宝",
+            "recipe_type": "refining",
+            "materials": json.dumps([
+                {"name": "混沌石", "quantity": 10},
+                {"name": "神玉", "quantity": 30},
+                {"name": "天地本源", "quantity": 3}
+            ]),
+            "output_name": "混沌珠",
+            "output_quality": "道品",
+            "base_success_rate": 25,
+            "equipment_type": "accessory",
+            "base_attributes": json.dumps({
+                "attack": 500,
+                "defense": 500,
+                "mp_bonus": 8000,
+                "special": "法力恢复速度+50%"
+            })
+        },
+
+        # ========== 炼虚期装备 (Rank 6) ==========
+        {
+            "name": "虚空剑",
+            "rank": 6,
+            "description": "可切割虚空的炼虚期神兵",
+            "recipe_type": "refining",
+            "materials": json.dumps([
+                {"name": "虚空铁", "quantity": 80},
+                {"name": "虚空结晶", "quantity": 40},
+                {"name": "六阶妖丹", "quantity": 15},
+                {"name": "混沌精华", "quantity": 10}
+            ]),
+            "output_name": "虚空剑",
+            "output_quality": "先天灵宝",
+            "base_success_rate": 25,
+            "equipment_type": "weapon",
+            "base_attributes": json.dumps({
+                "attack": 6000,
+                "defense": 500,
+                "hp_bonus": 5000,
+                "special": "攻击无视30%防御"
+            })
+        },
+        {
+            "name": "星辰甲",
+            "rank": 6,
+            "description": "凝聚星辰之力的防具",
+            "recipe_type": "refining",
+            "materials": json.dumps([
+                {"name": "星辰铁", "quantity": 60},
+                {"name": "星核", "quantity": 20},
+                {"name": "虚空结晶", "quantity": 30}
+            ]),
+            "output_name": "星辰甲",
+            "output_quality": "先天灵宝",
+            "base_success_rate": 25,
+            "equipment_type": "armor",
+            "base_attributes": json.dumps({
+                "attack": 500,
+                "defense": 5000,
+                "hp_bonus": 20000,
+                "special": "受到攻击时反震20%伤害"
+            })
+        },
+
+        # ========== 合体期装备 (Rank 7) ==========
+        {
+            "name": "太极剑",
+            "rank": 7,
+            "description": "阴阳合一的合体期至宝",
+            "recipe_type": "refining",
+            "materials": json.dumps([
+                {"name": "阴阳铁", "quantity": 100},
+                {"name": "太极石", "quantity": 50},
+                {"name": "七阶妖丹", "quantity": 20},
+                {"name": "天地本源", "quantity": 15}
+            ]),
+            "output_name": "太极剑",
+            "output_quality": "后天至宝",
+            "base_success_rate": 20,
+            "equipment_type": "weapon",
+            "base_attributes": json.dumps({
+                "attack": 15000,
+                "defense": 1000,
+                "hp_bonus": 10000,
+                "mp_bonus": 5000,
+                "special": "阴阳两仪，攻守兼备"
+            })
+        },
+        {
+            "name": "乾坤甲",
+            "rank": 7,
+            "description": "包罗乾坤的防御至宝",
+            "recipe_type": "refining",
+            "materials": json.dumps([
+                {"name": "乾坤石", "quantity": 80},
+                {"name": "天地本源", "quantity": 20},
+                {"name": "混沌精华", "quantity": 30}
+            ]),
+            "output_name": "乾坤甲",
+            "output_quality": "后天至宝",
+            "base_success_rate": 20,
+            "equipment_type": "armor",
+            "base_attributes": json.dumps({
+                "attack": 1000,
+                "defense": 12000,
+                "hp_bonus": 50000,
+                "special": "可吸收50%伤害转化为法力"
+            })
+        },
+
+        # ========== 大乘期装备 (Rank 8) ==========
+        {
+            "name": "弑仙剑",
+            "rank": 8,
+            "description": "传说中可弑仙的神剑",
+            "recipe_type": "refining",
+            "materials": json.dumps([
+                {"name": "弑仙铁", "quantity": 150},
+                {"name": "仙晶", "quantity": 80},
+                {"name": "八阶妖丹", "quantity": 30},
+                {"name": "鸿蒙紫气", "quantity": 10}
+            ]),
+            "output_name": "弑仙剑",
+            "output_quality": "先天至宝",
+            "base_success_rate": 15,
+            "equipment_type": "weapon",
+            "base_attributes": json.dumps({
+                "attack": 35000,
+                "defense": 2000,
+                "hp_bonus": 20000,
+                "special": "对仙人造成额外50%伤害"
+            })
+        },
+        {
+            "name": "不灭金身",
+            "rank": 8,
+            "description": "不灭不坏的金身护甲",
+            "recipe_type": "refining",
+            "materials": json.dumps([
+                {"name": "不灭金", "quantity": 120},
+                {"name": "金身舍利", "quantity": 30},
+                {"name": "鸿蒙紫气", "quantity": 15}
+            ]),
+            "output_name": "不灭金身",
+            "output_quality": "先天至宝",
+            "base_success_rate": 15,
+            "equipment_type": "armor",
+            "base_attributes": json.dumps({
+                "attack": 2000,
+                "defense": 30000,
+                "hp_bonus": 100000,
+                "special": "濒死时触发不灭金身，恢复50%生命值"
+            })
+        },
+
+        # ========== 渡劫期装备 (Rank 9) ==========
+        {
+            "name": "开天斧",
+            "rank": 9,
+            "description": "开天辟地的混沌神兵",
+            "recipe_type": "refining",
+            "materials": json.dumps([
+                {"name": "混沌神铁", "quantity": 200},
+                {"name": "开天石", "quantity": 100},
+                {"name": "九阶妖丹", "quantity": 50},
+                {"name": "鸿蒙紫气", "quantity": 30},
+                {"name": "天道碎片", "quantity": 5}
+            ]),
+            "output_name": "开天斧",
+            "output_quality": "混沌灵宝",
+            "base_success_rate": 10,
+            "equipment_type": "weapon",
+            "base_attributes": json.dumps({
+                "attack": 80000,
+                "defense": 5000,
+                "hp_bonus": 50000,
+                "mp_bonus": 20000,
+                "special": "破天之力，无视一切防御"
+            })
+        },
+        {
+            "name": "混沌钟",
+            "rank": 9,
+            "description": "镇压一切的混沌至宝",
+            "recipe_type": "refining",
+            "materials": json.dumps([
+                {"name": "混沌铜", "quantity": 200},
+                {"name": "时空石", "quantity": 100},
+                {"name": "天道碎片", "quantity": 10}
+            ]),
+            "output_name": "混沌钟",
+            "output_quality": "混沌灵宝",
+            "base_success_rate": 8,
+            "equipment_type": "accessory",
+            "base_attributes": json.dumps({
+                "attack": 10000,
+                "defense": 50000,
+                "hp_bonus": 200000,
+                "mp_bonus": 100000,
+                "special": "免疫一切控制效果，镇压万物"
             })
         }
     ]
