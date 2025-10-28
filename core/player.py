@@ -308,3 +308,54 @@ class PlayerManager:
         if player is None:
             raise PlayerNotFoundError(user_id)
         return player
+
+    async def add_spirit_stone(self, user_id: str, amount: int) -> bool:
+        """
+        增加玩家灵石
+
+        Args:
+            user_id: 用户ID
+            amount: 增加的灵石数量
+
+        Returns:
+            是否成功
+        """
+        if amount <= 0:
+            return False
+
+        # 更新灵石数量
+        await self.db.execute(
+            "UPDATE players SET spirit_stone = spirit_stone + ? WHERE user_id = ?",
+            (amount, user_id)
+        )
+
+        logger.info(f"玩家 {user_id} 获得灵石: +{amount}")
+        return True
+
+    async def consume_spirit_stone(self, user_id: str, amount: int) -> bool:
+        """
+        消耗玩家灵石
+
+        Args:
+            user_id: 用户ID
+            amount: 消耗的灵石数量
+
+        Returns:
+            是否成功
+        """
+        if amount <= 0:
+            return False
+
+        # 检查灵石是否足够
+        player = await self.get_player_or_error(user_id)
+        if player.spirit_stone < amount:
+            return False
+
+        # 更新灵石数量
+        await self.db.execute(
+            "UPDATE players SET spirit_stone = spirit_stone - ? WHERE user_id = ?",
+            (amount, user_id)
+        )
+
+        logger.info(f"玩家 {user_id} 消耗灵石: -{amount}")
+        return True

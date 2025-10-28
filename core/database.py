@@ -35,10 +35,15 @@ class DatabaseManager:
 
             logger.info(f"数据库连接成功: {self.db_path}")
 
-            # 创建表
+            # 备份现有数据
+            await self._backup_existing_data()
+
+            # 创建表（会先清空旧表再重新创建）
             await self._create_tables()
 
-  
+            # 还原备份数据
+            await self._restore_backup_data()
+
             # 创建索引
             await self._create_indexes()
 
@@ -51,12 +56,98 @@ class DatabaseManager:
             logger.error(f"数据库初始化失败: {e}", exc_info=True)
             raise
 
+    async def _backup_existing_data(self):
+        """备份现有数据"""
+        if not await self.table_exists("players"):
+            logger.info("数据库为空，无需备份")
+            return
+
+        logger.info("开始备份现有数据...")
+        
+        # 备份所有表的数据
+        tables_to_backup = [
+            "players", "equipment", "skills", "professions", "recipes", 
+            "crafting_logs", "tools", "profession_skills", "active_formations",
+            "items", "sects", "sect_members", "ai_generation_history",
+            "tribulations", "profession_exams", "locations", "player_locations"
+        ]
+        
+        for table in tables_to_backup:
+            if await self.table_exists(table):
+                try:
+                    await self.execute(f"DROP TABLE IF EXISTS {table}_backup")
+                    await self.execute(f"CREATE TABLE {table}_backup AS SELECT * FROM {table}")
+                    logger.info(f"已备份表: {table}")
+                except Exception as e:
+                    logger.error(f"备份表 {table} 失败: {e}")
+            else:
+                logger.debug(f"表 {table} 不存在，跳过备份")
+        
+        logger.info("数据备份完成")
+
+    async def _restore_backup_data(self):
+        """还原备份数据"""
+        logger.info("开始还原备份数据...")
+        
+        # 还原所有表的数据
+        tables_to_restore = [
+            "players", "equipment", "skills", "professions", "recipes", 
+            "crafting_logs", "tools", "profession_skills", "active_formations",
+            "items", "sects", "sect_members", "ai_generation_history",
+            "tribulations", "profession_exams", "locations", "player_locations"
+        ]
+        
+        for table in tables_to_restore:
+            if await self.table_exists(f"{table}_backup"):
+                try:
+                    # 清空目标表
+                    await self.execute(f"DELETE FROM {table}")
+                    
+                    # 获取备份表的列信息
+                    backup_columns = await self.fetchall(f"PRAGMA table_info({table}_backup)")
+                    backup_column_names = [col[1] for col in backup_columns]
+                    
+                    # 获取目标表的列信息
+                    target_columns = await self.fetchall(f"PRAGMA table_info({table})")
+                    target_column_names = [col[1] for col in target_columns]
+                    
+                    # 确定共同的列
+                    common_columns = [col for col in backup_column_names if col in target_column_names]
+                    
+                    if common_columns:
+                        # 只还原共同的列
+                        columns_str = ", ".join(common_columns)
+                        await self.execute(f"INSERT INTO {table} ({columns_str}) SELECT {columns_str} FROM {table}_backup")
+                        logger.info(f"已还原表: {table} ({', '.join(common_columns)})")
+                    else:
+                        logger.warning(f"表 {table} 没有共同列，跳过还原")
+
+        # 删除备份表
+        for table in tables_to_restore:
+                    await self.execute(f"DROP TABLE IF EXISTS {table}_backup")
+        logger.info("备份表清理完成")
+
     async def _create_tables(self):
-        """创建所有表"""
+        """创建所有表（会先删除旧表再重新创建）"""
+        logger.info("开始创建数据库表...")
+
+        # 先删除所有现有表
+        tables_to_drop = [
+            "players", "equipment", "skills", "professions", "recipes", 
+            "crafting_logs", "tools", "profession_skills", "active_formations",
+            "items", "sects", "sect_members", "ai_generation_history",
+            "tribulations", "profession_exams", "locations", "player_locations",
+            "cultivation_methods"
+        ]
+        
+        for table in tables_to_drop:
+            await self.execute(f"DROP TABLE IF EXISTS {table}")
+        
+        logger.info("已删除旧表")
 
         # 玩家表
         await self.execute("""
-            CREATE TABLE IF NOT EXISTS players (
+            CREATE TABLE players (
                 user_id TEXT PRIMARY KEY,
                 name TEXT NOT NULL,
                 realm TEXT DEFAULT '炼气期',
@@ -99,36 +190,6 @@ class DatabaseManager:
             )
         """)
         logger.info("创建表: players")
-
-        # 装备表
-        await self.execute("""
-            CREATE TABLE IF NOT EXISTS equipment (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id TEXT NOT NULL,
-                name TEXT NOT NULL,
-                type TEXT NOT NULL,
-                sub_type TEXT,
-                quality TEXT DEFAULT '凡品',
-                level INTEGER DEFAULT 1,
-                enhance_level INTEGER DEFAULT 0,
-
-                attack INTEGER DEFAULT 0,
-                defense INTEGER DEFAULT 0,
-                hp_bonus INTEGER DEFAULT 0,
-                mp_bonus INTEGER DEFAULT 0,
-
-                extra_attrs TEXT,
-                special_effect TEXT,
-                skill_id INTEGER,
-
-                is_equipped BOOLEAN DEFAULT 0,
-                is_bound BOOLEAN DEFAULT 0,
-
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (user_id) REFERENCES players(user_id)
-            )
-        """)
-        logger.info("创建表: equipment")
 
         # 技能表
         await self.execute("""
@@ -292,7 +353,7 @@ class DatabaseManager:
 
         # 宗门表
         await self.execute("""
-            CREATE TABLE IF NOT EXISTS sects (
+            CREATE TABLE sects (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT UNIQUE NOT NULL,
                 founder_id TEXT NOT NULL,
@@ -311,7 +372,7 @@ class DatabaseManager:
 
         # 宗门成员表
         await self.execute("""
-            CREATE TABLE IF NOT EXISTS sect_members (
+            CREATE TABLE sect_members (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 sect_id INTEGER NOT NULL,
                 user_id TEXT NOT NULL,
@@ -343,23 +404,29 @@ class DatabaseManager:
 
         # 天劫表
         await self.execute("""
-            CREATE TABLE IF NOT EXISTS tribulations (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+            CREATE TABLE tribulations (
+                id TEXT PRIMARY KEY,
                 user_id TEXT NOT NULL,
                 tribulation_type TEXT NOT NULL,
-                from_realm TEXT NOT NULL,
-                to_realm TEXT NOT NULL,
-                difficulty INTEGER DEFAULT 1,
+                realm TEXT NOT NULL,
+                realm_level INTEGER NOT NULL,
+                tribulation_level INTEGER NOT NULL,
+                difficulty TEXT NOT NULL,
+                total_waves INTEGER NOT NULL,
                 current_wave INTEGER DEFAULT 0,
-                max_waves INTEGER DEFAULT 9,
-                damage_taken INTEGER DEFAULT 0,
-                cultivation_bonus REAL DEFAULT 0,
-                status TEXT DEFAULT 'active',
-                success BOOLEAN,
+                damage_per_wave INTEGER NOT NULL,
+                damage_reduction REAL DEFAULT 0.0,
+                status TEXT NOT NULL,
+                success INTEGER DEFAULT 0,
+                initial_hp INTEGER DEFAULT 0,
+                current_hp INTEGER DEFAULT 0,
+                total_damage_taken INTEGER DEFAULT 0,
                 rewards TEXT,
-                started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                completed_at TIMESTAMP,
-                FOREIGN KEY (user_id) REFERENCES players(user_id)
+                penalties TEXT,
+                wave_logs TEXT,
+                started_at TEXT,
+                completed_at TEXT,
+                created_at TEXT NOT NULL
             )
         """)
         logger.info("创建表: tribulations")
