@@ -19,6 +19,81 @@ from ..utils import (
 )
 
 
+# NPC模板配置
+NPC_TEMPLATES = {
+    '炼气期': [
+        {
+            'name': '野兽',
+            'level_range': (1, 3),
+            'hp_mult': 0.8,
+            'atk_mult': 0.7,
+            'rewards': {'spirit_stone': (10, 30), 'exp': (50, 100)}
+        },
+        {
+            'name': '妖兽',
+            'level_range': (4, 9),
+            'hp_mult': 1.0,
+            'atk_mult': 0.9,
+            'rewards': {'spirit_stone': (30, 100), 'exp': (100, 300)}
+        }
+    ],
+    '筑基期': [
+        {
+            'name': '灵兽',
+            'level_range': (1, 3),
+            'hp_mult': 1.2,
+            'atk_mult': 1.0,
+            'rewards': {'spirit_stone': (100, 300), 'exp': (300, 600)}
+        },
+        {
+            'name': '妖兽',
+            'level_range': (4, 9),
+            'hp_mult': 1.3,
+            'atk_mult': 1.1,
+            'rewards': {'spirit_stone': (200, 500), 'exp': (500, 1000)}
+        }
+    ],
+    '金丹期': [
+        {
+            'name': '妖王',
+            'level_range': (1, 5),
+            'hp_mult': 1.5,
+            'atk_mult': 1.2,
+            'rewards': {'spirit_stone': (500, 1000), 'exp': (1000, 2000)}
+        }
+    ]
+}
+
+
+class NPC:
+    """NPC妖兽类"""
+
+    def __init__(self, name: str, realm: str, level: int, hp: int, attack: int, defense: int, rewards: Dict):
+        """
+        初始化NPC
+
+        Args:
+            name: NPC名称
+            realm: 境界
+            level: 等级
+            hp: 生命值
+            attack: 攻击力
+            defense: 防御力
+            rewards: 奖励
+        """
+        self.name = name
+        self.realm = realm
+        self.level = level
+        self.realm_level = level
+        self.hp = hp
+        self.max_hp = hp
+        self.attack = attack
+        self.defense = defense
+        self.mp = 100
+        self.max_mp = 100
+        self.rewards = rewards
+
+
 class CombatException(XiuxianException):
     """战斗相关异常"""
     pass
@@ -380,3 +455,110 @@ class CombatSystem:
         defender_speed = getattr(defender, 'speed', 10)
 
         return CombatCalculator.calculate_dodge_chance(attacker_speed, defender_speed)
+
+    async def generate_npc(self, realm: str, level: int) -> NPC:
+        """
+        生成NPC妖兽
+
+        Args:
+            realm: 境界
+            level: 等级
+
+        Returns:
+            生成的NPC对象
+        """
+        templates = NPC_TEMPLATES.get(realm, NPC_TEMPLATES['炼气期'])
+
+        # 选择合适的模板
+        suitable_templates = [
+            t for t in templates
+            if t['level_range'][0] <= level <= t['level_range'][1]
+        ]
+
+        if not suitable_templates:
+            suitable_templates = templates
+
+        template = random.choice(suitable_templates)
+
+        # 计算NPC属性
+        base_hp = 100 + level * 50
+        base_attack = 10 + level * 5
+        base_defense = 5 + level * 3
+
+        npc = NPC(
+            name=f"{template['name']}({level}级)",
+            realm=realm,
+            level=level,
+            hp=int(base_hp * template['hp_mult']),
+            attack=int(base_attack * template['atk_mult']),
+            defense=base_defense,
+            rewards=template['rewards']
+        )
+
+        logger.info(f"生成NPC: {npc.name}, HP:{npc.hp}, 攻击:{npc.attack}, 防御:{npc.defense}")
+
+        return npc
+
+    async def battle_npc(self, user_id: str, npc_level: int = None) -> Dict:
+        """
+        PVE战斗
+
+        Args:
+            user_id: 玩家ID
+            npc_level: NPC等级（可选，默认根据玩家境界等级）
+
+        Returns:
+            战斗结果字典，包含：
+            {
+                'battle_id': str,
+                'player': Player,
+                'npc': NPC,
+                'combat_log': List[Dict],
+                'winner': str,
+                'rewards': Dict
+            }
+        """
+        # 获取玩家
+        player = await self.player_mgr.get_player_or_error(user_id)
+
+        # 确定NPC等级
+        if npc_level is None:
+            npc_level = player.realm_level
+
+        # 生成NPC
+        npc = await self.generate_npc(player.realm, npc_level)
+
+        # 执行战斗（复用PVP战斗逻辑）
+        battle_id = self._generate_battle_id(user_id, 'NPC')
+        combat_log = await self._execute_combat(player, npc, battle_id)
+
+        # 判断胜负
+        winner = combat_log[-1]['winner'] if combat_log else None
+
+        result = {
+            'battle_id': battle_id,
+            'player': player,
+            'npc': npc,
+            'combat_log': combat_log,
+            'winner': winner,
+            'rewards': {}
+        }
+
+        # 如果玩家胜利，发放奖励
+        if winner == user_id:
+            spirit_stone = random.randint(*npc.rewards['spirit_stone'])
+            exp = random.randint(*npc.rewards['exp'])
+
+            player.spirit_stone += spirit_stone
+            await self.player_mgr.update_player(player)
+
+            result['rewards'] = {
+                'spirit_stone': spirit_stone,
+                'exp': exp
+            }
+
+            logger.info(f"玩家 {player.name} 战胜 {npc.name}，获得灵石 {spirit_stone}，经验 {exp}")
+        else:
+            logger.info(f"玩家 {player.name} 被 {npc.name} 击败")
+
+        return result

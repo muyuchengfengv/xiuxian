@@ -490,3 +490,111 @@ class EquipmentSystem:
             'total_score': total_score,
             'equipped_items': equipped_items
         }
+
+    async def enhance_equipment(self, user_id: str, equipment_id: str) -> Dict:
+        """
+        强化装备
+
+        Args:
+            user_id: 用户ID
+            equipment_id: 装备ID
+
+        Returns:
+            强化结果字典，包含：
+            {
+                'success': bool,
+                'equipment': Equipment,
+                'old_level': int,
+                'new_level': int,
+                'success_rate': float,
+                'spirit_stone_cost': int,
+                'attribute_bonus': Dict
+            }
+
+        Raises:
+            EquipmentNotFoundError: 装备不存在
+            InvalidOperationError: 无效操作（如达到最大强化等级）
+        """
+        # 获取装备
+        equipment = await self.get_equipment_by_id(equipment_id, user_id)
+        player = await self.player_mgr.get_player_or_error(user_id)
+
+        # 检查是否达到最大强化等级
+        max_enhance_level = 20
+        if equipment.enhance_level >= max_enhance_level:
+            raise InvalidOperationError(f"装备已达到最大强化等级 +{max_enhance_level}")
+
+        # 计算强化消耗（基于当前强化等级）
+        base_cost = 100
+        spirit_stone_cost = int(base_cost * (1.5 ** equipment.enhance_level))
+
+        # 检查灵石是否足够
+        if player.spirit_stone < spirit_stone_cost:
+            raise InvalidOperationError(f"灵石不足！需要 {spirit_stone_cost}，当前拥有 {player.spirit_stone}")
+
+        # 计算成功率（强化等级越高，成功率越低）
+        base_rate = 1.0  # 100%基础成功率
+        level_penalty = equipment.enhance_level * 0.05  # 每级降低5%
+        success_rate = max(0.1, base_rate - level_penalty)  # 最低10%成功率
+
+        # 执行强化
+        old_level = equipment.enhance_level
+        success = random.random() < success_rate
+
+        # 扣除灵石
+        player.spirit_stone -= spirit_stone_cost
+        await self.player_mgr.update_player(player)
+
+        attribute_bonus = {}
+
+        if success:
+            # 强化成功，提升等级
+            equipment.enhance_level += 1
+
+            # 计算属性加成（每级强化增加5%基础属性）
+            bonus_multiplier = 0.05
+
+            if equipment.attack > 0:
+                attack_bonus = int(equipment.attack * bonus_multiplier)
+                equipment.attack += attack_bonus
+                attribute_bonus['attack'] = attack_bonus
+
+            if equipment.defense > 0:
+                defense_bonus = int(equipment.defense * bonus_multiplier)
+                equipment.defense += defense_bonus
+                attribute_bonus['defense'] = defense_bonus
+
+            if equipment.hp_bonus > 0:
+                hp_bonus = int(equipment.hp_bonus * bonus_multiplier)
+                equipment.hp_bonus += hp_bonus
+                attribute_bonus['hp_bonus'] = hp_bonus
+
+            if equipment.mp_bonus > 0:
+                mp_bonus = int(equipment.mp_bonus * bonus_multiplier)
+                equipment.mp_bonus += mp_bonus
+                attribute_bonus['mp_bonus'] = mp_bonus
+
+            # 更新装备
+            await self._update_equipment(equipment)
+
+            logger.info(
+                f"玩家 {player.name} 成功强化 {equipment.get_display_name()} "
+                f"从 +{old_level} 到 +{equipment.enhance_level}"
+            )
+        else:
+            # 强化失败
+            logger.info(
+                f"玩家 {player.name} 强化 {equipment.get_display_name()} 失败 "
+                f"(+{old_level} → 失败)"
+            )
+
+        return {
+            'success': success,
+            'equipment': equipment,
+            'old_level': old_level,
+            'new_level': equipment.enhance_level if success else old_level,
+            'success_rate': success_rate,
+            'spirit_stone_cost': spirit_stone_cost,
+            'attribute_bonus': attribute_bonus,
+            'remaining_spirit_stone': player.spirit_stone
+        }

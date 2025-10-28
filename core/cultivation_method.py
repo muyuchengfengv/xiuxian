@@ -204,6 +204,16 @@ class CultivationMethodSystem:
         sql = f"INSERT INTO cultivation_methods ({', '.join(columns)}) VALUES ({placeholders})"
         await self.db.execute(sql, values)
 
+        # 同时在 player_cultivation_methods 表中创建记录
+        if method.owner_id:
+            await self.db.execute(
+                """
+                INSERT INTO player_cultivation_methods (user_id, method_id, is_main, proficiency, proficiency_stage, compatibility, learned_at)
+                VALUES (?, ?, 0, 0, '初窥门径', 50, CURRENT_TIMESTAMP)
+                """,
+                (method.owner_id, method.id)
+            )
+
     async def _ensure_methods_table(self):
         """确保功法表存在"""
         sql = """
@@ -518,3 +528,176 @@ class CultivationMethodSystem:
         lines.append("\n💡 使用 /功法卸下 [槽位] 卸下功法")
 
         return "\n".join(lines)
+
+    async def practice_method(self, user_id: str, method_id: str) -> Dict:
+        """
+        修炼功法
+
+        Args:
+            user_id: 用户ID
+            method_id: 功法ID
+
+        Returns:
+            修炼结果字典，包含：
+            {
+                'success': bool,
+                'proficiency_gain': int,
+                'current_proficiency': int,
+                'mastery_level': str,
+                'leveled_up': bool,
+                'new_level': int,
+                'compatibility': int,
+                'unlocked_skills': list
+            }
+
+        Raises:
+            MethodNotOwnError: 玩家未拥有此功法
+            MethodNotFoundError: 功法不存在
+        """
+        # 获取玩家信息
+        player = await self.player_mgr.get_player_or_error(user_id)
+
+        # 检查玩家是否拥有此功法（查 player_cultivation_methods）
+        player_method = await self._get_player_method(user_id, method_id)
+        if not player_method:
+            raise MethodNotOwnError('您还未学习此功法')
+
+        # 获取功法模板
+        method = await self.get_method_by_id(method_id, user_id)
+
+        # 计算灵根适配度（基于功法元素和玩家灵根）
+        compatibility = self._calculate_compatibility(player, method)
+
+        # 计算熟练度增益（基础10 + 适配度加成）
+        proficiency_gain = int(10 * (1 + compatibility / 100))
+
+        # 调用现有的 add_method_proficiency 方法
+        leveled_up, new_level = await self.add_method_proficiency(
+            user_id, method_id, proficiency_gain, '修炼'
+        )
+
+        # 更新 player_cultivation_methods 表的熟练度
+        await self.db.execute(
+            "UPDATE player_cultivation_methods SET proficiency = proficiency + ?, last_practice = CURRENT_TIMESTAMP WHERE user_id = ? AND method_id = ?",
+            (proficiency_gain, user_id, method_id)
+        )
+
+        # 重新获取功法以获取最新的熟练度
+        method = await self.get_method_by_id(method_id, user_id)
+
+        # 检查技能解锁（如果升级了）
+        unlocked_skills = []
+        if leveled_up:
+            # 调用技能系统检查解锁
+            # 暂时留空，等技能系统实现后会被调用
+            pass
+
+        return {
+            'success': True,
+            'proficiency_gain': proficiency_gain,
+            'current_proficiency': method.proficiency,
+            'mastery_level': method.get_mastery_display(),
+            'leveled_up': leveled_up,
+            'new_level': new_level,
+            'compatibility': compatibility,
+            'unlocked_skills': unlocked_skills
+        }
+
+    async def _get_player_method(self, user_id: str, method_id: str) -> Optional[Dict]:
+        """
+        获取玩家功法进度
+
+        Args:
+            user_id: 用户ID
+            method_id: 功法ID
+
+        Returns:
+            玩家功法进度字典，如果不存在则返回None
+        """
+        result = await self.db.fetchone(
+            'SELECT * FROM player_cultivation_methods WHERE user_id = ? AND method_id = ?',
+            (user_id, method_id)
+        )
+        return dict(result) if result else None
+
+    def _calculate_compatibility(self, player, method) -> int:
+        """
+        计算灵根与功法的适配度
+
+        Args:
+            player: 玩家对象
+            method: 功法对象
+
+        Returns:
+            适配度（0-100）
+        """
+        # 基于灵根类型和功法元素计算适配度
+        # 灵根类型匹配：100分
+        # 相生：75分
+        # 中立：50分
+        # 相克：25分
+        spirit_type = player.spirit_root_type
+        element = method.element_type
+
+        # 无属性功法或完全匹配
+        if element == 'none' or spirit_type == element:
+            return 100
+
+        # 检查相生
+        if self._is_compatible_element(spirit_type, element):
+            return 75
+
+        # 检查相克
+        if self._is_conflicting_element(spirit_type, element):
+            return 25
+
+        # 中立关系
+        return 50
+
+    def _is_compatible_element(self, spirit_type: str, element_type: str) -> bool:
+        """
+        判断灵根与功法元素是否相生
+
+        五行相生：木生火、火生土、土生金、金生水、水生木
+
+        Args:
+            spirit_type: 灵根类型
+            element_type: 功法元素类型
+
+        Returns:
+            是否相生
+        """
+        # 五行相生关系
+        compatible_relations = {
+            'wood': ['fire'],      # 木生火
+            'fire': ['earth'],     # 火生土
+            'earth': ['metal'],    # 土生金
+            'metal': ['water'],    # 金生水
+            'water': ['wood'],     # 水生木
+        }
+
+        return element_type in compatible_relations.get(spirit_type, [])
+
+    def _is_conflicting_element(self, spirit_type: str, element_type: str) -> bool:
+        """
+        判断灵根与功法元素是否相克
+
+        五行相克：木克土、土克水、水克火、火克金、金克木
+
+        Args:
+            spirit_type: 灵根类型
+            element_type: 功法元素类型
+
+        Returns:
+            是否相克
+        """
+        # 五行相克关系
+        conflicting_relations = {
+            'wood': ['earth'],     # 木克土
+            'earth': ['water'],    # 土克水
+            'water': ['fire'],     # 水克火
+            'fire': ['metal'],     # 火克金
+            'metal': ['wood'],     # 金克木
+        }
+
+        return element_type in conflicting_relations.get(spirit_type, [])

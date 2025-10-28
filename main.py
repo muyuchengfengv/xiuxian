@@ -17,6 +17,7 @@ from .core.combat import CombatSystem, InvalidTargetException, SelfCombatExcepti
 from .core.equipment import EquipmentSystem
 from .core.ai_generator import AIGenerator, AIGenerationError, ContentNotAvailableError
 from .core.cultivation_method import CultivationMethodSystem, MethodNotFoundError, MethodNotOwnError, MethodAlreadyEquippedError, SlotOccupiedError
+from .core.skill import SkillSystem, SkillError, SkillNotFoundError, InsufficientMPError
 from .core.sect import SectSystem, SectError, SectNotFoundError, SectNameExistsError, NotSectMemberError, AlreadyInSectError, InsufficientPermissionError, InsufficientResourceError, SectFullError
 from .core.tribulation import TribulationSystem, TribulationError, TribulationNotFoundError, TribulationInProgressError, NoTribulationRequiredError, InsufficientHPError
 from .core.world import WorldManager, WorldException, LocationNotFoundError, InvalidMoveError, MoveCooldownError
@@ -27,6 +28,7 @@ from .core.alchemy import AlchemySystem, AlchemyError, RecipeNotFoundError
 from .core.refining import RefiningSystem, RefiningError, BlueprintNotFoundError
 from .core.formation import FormationSystem, FormationError, FormationPatternNotFoundError, FormationAlreadyExistsError
 from .core.talisman import TalismanSystem, TalismanError, TalismanPatternNotFoundError
+from .core.items import ItemManager, ItemError, ItemNotFoundError, InsufficientItemError, ItemCannotUseError
 
 # 导入工具类
 from .utils import (
@@ -77,6 +79,7 @@ class XiuxianPlugin(Star):
         self.combat_sys = None
         self.equipment_sys = None
         self.method_sys = None
+        self.skill_sys = None
         self.sect_sys = None
         self.ai_generator = None
         self.tribulation_sys = None
@@ -88,6 +91,9 @@ class XiuxianPlugin(Star):
         self.refining_sys = None
         self.formation_sys = None
         self.talisman_sys = None
+
+        # 物品系统管理器
+        self.item_mgr = None
 
         logger.info("修仙世界插件已加载 (使用懒加载模式)")
 
@@ -129,11 +135,13 @@ class XiuxianPlugin(Star):
             self.combat_sys = CombatSystem(self.db, self.player_mgr)
             self.equipment_sys = EquipmentSystem(self.db, self.player_mgr)
             self.method_sys = CultivationMethodSystem(self.db, self.player_mgr)
+            self.skill_sys = SkillSystem(self.db, self.player_mgr)
             self.sect_sys = SectSystem(self.db, self.player_mgr)
             self.ai_generator = AIGenerator(self.db, self.player_mgr)
             self.tribulation_sys = TribulationSystem(self.db, self.player_mgr)
             self.world_mgr = WorldManager(self.db, self.player_mgr)
             logger.info("✓ 核心系统初始化完成")
+            logger.info("✓ 技能系统初始化完成")
 
             # 初始化职业系统
             logger.info("🔨 正在初始化职业系统...")
@@ -143,6 +151,11 @@ class XiuxianPlugin(Star):
             self.formation_sys = FormationSystem(self.db, self.player_mgr, self.profession_mgr)
             self.talisman_sys = TalismanSystem(self.db, self.player_mgr, self.profession_mgr)
             logger.info("✓ 职业系统初始化完成")
+
+            # 初始化物品系统
+            logger.info("📦 正在初始化物品系统...")
+            self.item_mgr = ItemManager(self.db, self.player_mgr)
+            logger.info("✓ 物品系统初始化完成")
 
             # 注入天劫系统到突破系统
             self.breakthrough_sys.set_tribulation_system(self.tribulation_sys)
@@ -830,9 +843,9 @@ class XiuxianPlugin(Star):
             logger.error(f"查看战力失败: {e}", exc_info=True)
             yield event.plain_result(f"查看战力失败：{str(e)}")
 
-    @filter.command("背包", alias={"bag", "inventory"})
+    @filter.command("储物袋", alias={"背包", "bag", "inventory"})
     async def inventory_cmd(self, event: AstrMessageEvent):
-        """查看背包装备"""
+        """查看储物袋装备"""
         user_id = event.get_sender_id()
 
         try:
@@ -849,8 +862,8 @@ class XiuxianPlugin(Star):
         except PlayerNotFoundError as e:
             yield event.plain_result(str(e))
         except Exception as e:
-            logger.error(f"查看背包失败: {e}", exc_info=True)
-            yield event.plain_result(f"查看背包失败：{str(e)}")
+            logger.error(f"查看储物袋失败: {e}", exc_info=True)
+            yield event.plain_result(f"查看储物袋失败：{str(e)}")
 
     @filter.command("装备", alias={"equip", "穿戴"})
     async def equip_cmd(self, event: AstrMessageEvent):
@@ -870,7 +883,7 @@ class XiuxianPlugin(Star):
                 yield event.plain_result(
                     "⚠️ 请指定要装备的物品编号！\n\n"
                     "💡 使用方法：/装备 [编号]\n"
-                    "💡 使用 /背包 查看物品编号"
+                    "💡 使用 /储物袋 查看物品编号"
                 )
                 return
 
@@ -962,7 +975,7 @@ class XiuxianPlugin(Star):
 
             yield event.plain_result(
                 f"✅ 成功卸下了 {unequipped_item.get_display_name()}！\n\n"
-                f"💡 使用 /背包 查看装备状态"
+                f"💡 使用 /储物袋 查看装备状态"
             )
 
         except PlayerNotFoundError as e:
@@ -1019,6 +1032,186 @@ class XiuxianPlugin(Star):
         except Exception as e:
             logger.error(f"获得装备失败: {e}", exc_info=True)
             yield event.plain_result(f"获得装备失败：{str(e)}")
+
+    @filter.command("强化", alias={"enhance", "强化装备"})
+    async def enhance_equipment_cmd(self, event: AstrMessageEvent):
+        """强化装备"""
+        user_id = event.get_sender_id()
+        message_text = self._get_message_text(event)
+
+        try:
+            # 检查插件是否已初始化
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
+            # 提取装备编号
+            parts = message_text.split()
+            if len(parts) < 2:
+                yield event.plain_result(
+                    "⚠️ 请指定要强化的装备编号！\n\n"
+                    "💡 使用方法：/强化 [编号]\n"
+                    "💡 使用 /储物袋 查看装备编号"
+                )
+                return
+
+            try:
+                equipment_index = int(parts[1])
+            except ValueError:
+                yield event.plain_result("❌ 装备编号必须是数字！")
+                return
+
+            # 获取装备列表
+            equipment_list = await self.equipment_sys.get_player_equipment(user_id)
+
+            if equipment_index < 1 or equipment_index > len(equipment_list):
+                yield event.plain_result(
+                    f"❌ 装备编号 {equipment_index} 不存在！\n\n"
+                    f"💡 装备编号范围：1-{len(equipment_list)}"
+                )
+                return
+
+            # 获取要强化的装备
+            equipment = equipment_list[equipment_index - 1]
+
+            # 显示强化信息和确认
+            if len(parts) < 3 or parts[2] not in ['确认', '是', 'y', 'yes']:
+                # 计算强化消耗和成功率
+                base_cost = 100
+                spirit_stone_cost = int(base_cost * (1.5 ** equipment.enhance_level))
+                base_rate = 1.0
+                level_penalty = equipment.enhance_level * 0.05
+                success_rate = max(0.1, base_rate - level_penalty)
+
+                player = await self.player_mgr.get_player_or_error(user_id)
+
+                info_lines = [
+                    f"⚡ 装备强化信息",
+                    "",
+                    f"装备：{equipment.get_display_name()}",
+                    f"当前强化等级：+{equipment.enhance_level}",
+                    f"目标强化等级：+{equipment.enhance_level + 1}",
+                    "",
+                    f"📊 强化成功率：{success_rate:.1%}",
+                    f"💎 消耗灵石：{spirit_stone_cost}",
+                    f"💰 当前灵石：{player.spirit_stone}",
+                    "",
+                    "💡 强化成功：装备属性提升5%",
+                    "💡 强化失败：仅消耗灵石，装备等级不变",
+                    "",
+                    "💡 使用 /强化 [编号] 确认 执行强化"
+                ]
+
+                yield event.plain_result("\n".join(info_lines))
+                return
+
+            # 执行强化
+            yield event.plain_result("⚡ 正在强化装备...")
+
+            result = await self.equipment_sys.enhance_equipment(user_id, equipment.id)
+
+            # 格式化强化结果
+            result_lines = [
+                f"⚡ 装备强化结果",
+                "",
+                f"装备：{result['equipment'].get_display_name()}"
+            ]
+
+            if result['success']:
+                result_lines.extend([
+                    "",
+                    f"🎉 强化成功！",
+                    f"✨ 强化等级：+{result['old_level']} → +{result['new_level']}",
+                    ""
+                ])
+
+                # 显示属性提升
+                if result['attribute_bonus']:
+                    result_lines.append("📈 属性提升：")
+                    for attr, value in result['attribute_bonus'].items():
+                        attr_names = {
+                            'attack': '攻击力',
+                            'defense': '防御力',
+                            'hp_bonus': '生命值',
+                            'mp_bonus': '法力值'
+                        }
+                        attr_name = attr_names.get(attr, attr)
+                        result_lines.append(f"   {attr_name} +{value}")
+                    result_lines.append("")
+            else:
+                result_lines.extend([
+                    "",
+                    f"💔 强化失败！",
+                    f"📊 强化等级：+{result['old_level']} (未变化)",
+                    ""
+                ])
+
+            result_lines.extend([
+                f"💎 消耗灵石：{result['spirit_stone_cost']}",
+                f"💰 剩余灵石：{result['remaining_spirit_stone']}",
+                f"📊 成功率：{result['success_rate']:.1%}",
+                "",
+                "💡 使用 /储物袋 查看装备详情"
+            ])
+
+            yield event.plain_result("\n".join(result_lines))
+
+            logger.info(
+                f"用户 {user_id} 强化装备: {equipment.name} "
+                f"{'成功' if result['success'] else '失败'} "
+                f"(+{result['old_level']} → +{result['new_level']})"
+            )
+
+        except PlayerNotFoundError as e:
+            yield event.plain_result(str(e))
+        except InvalidOperationError as e:
+            yield event.plain_result(f"⚠️ {str(e)}")
+        except Exception as e:
+            logger.error(f"强化装备失败: {e}", exc_info=True)
+            yield event.plain_result(f"强化装备失败：{str(e)}")
+
+    @filter.command("使用", alias={"use", "使用物品"})
+    async def use_item_cmd(self, event: AstrMessageEvent):
+        """使用物品（丹药、符箓等）"""
+        user_id = event.get_sender_id()
+        message_text = self._get_message_text(event)
+
+        try:
+            # 检查插件是否已初始化
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
+            # 提取物品名称
+            parts = message_text.split(maxsplit=1)
+            if len(parts) < 2:
+                yield event.plain_result(
+                    "⚠️ 请指定要使用的物品名称！\n\n"
+                    "💡 使用方法：/使用 [物品名称]\n"
+                    "💡 例如：/使用 回血丹\n"
+                    "💡 使用 /储物袋 查看拥有的物品"
+                )
+                return
+
+            item_name = parts[1].strip()
+
+            # 使用物品
+            result = await self.item_mgr.use_item(user_id, item_name)
+
+            if result['success']:
+                yield event.plain_result(f"✅ {result['message']}")
+            else:
+                yield event.plain_result(f"❌ {result['message']}")
+
+        except PlayerNotFoundError:
+            yield event.plain_result("❌ 道友还未踏上修仙之路，请先使用 /修仙 创建角色")
+        except ItemNotFoundError as e:
+            yield event.plain_result(f"❌ {str(e)}")
+        except ItemCannotUseError as e:
+            yield event.plain_result(f"⚠️ {str(e)}")
+        except Exception as e:
+            logger.error(f"使用物品失败: {e}", exc_info=True)
+            yield event.plain_result(f"使用物品失败：{str(e)}")
 
     @filter.command("AI生成", alias={"ai", "生成", "create"})
     async def ai_generate_cmd(self, event: AstrMessageEvent):
@@ -1465,6 +1658,274 @@ class XiuxianPlugin(Star):
         """.strip()
 
         yield event.plain_result(help_text)
+
+    @filter.command("修炼功法", alias={"practice_method", "功法修炼"})
+    async def practice_method_cmd(self, event: AstrMessageEvent):
+        """修炼功法"""
+        user_id = event.get_sender_id()
+
+        try:
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
+            # 解析命令参数
+            message_text = self._get_message_text(event)
+            parts = message_text.split()
+
+            if len(parts) < 2:
+                # 显示功法列表和使用说明
+                methods = await self.method_sys.get_player_methods(user_id)
+                if not methods:
+                    yield event.plain_result("⚠️ 您还没有任何功法\n\n💡 使用 /获得功法 获取随机功法")
+                    return
+
+                lines = ["🧘 功法修炼", "─" * 40, ""]
+                for i, method in enumerate(methods, 1):
+                    lines.append(f"{i}. {method.get_display_name()}")
+                    lines.append(f"   熟练度: {method.get_mastery_display()}")
+
+                lines.extend(["", "💡 使用方法：/修炼功法 [编号]", "💡 例如：/修炼功法 1"])
+                yield event.plain_result("\n".join(lines))
+                return
+
+            # 解析功法编号
+            try:
+                method_index = int(parts[1])
+            except ValueError:
+                yield event.plain_result("��� 功法编号必须是数字！")
+                return
+
+            # 获取功法列表
+            methods = await self.method_sys.get_player_methods(user_id)
+            if method_index < 1 or method_index > len(methods):
+                yield event.plain_result(f"❌ 功法编号 {method_index} 不存在！")
+                return
+
+            method = methods[method_index - 1]
+
+            # 执行修炼
+            result = await self.method_sys.practice_method(user_id, method.id)
+
+            # 检查技能解锁
+            if result['leveled_up']:
+                unlocked = await self.skill_sys.check_and_unlock_skills(
+                    user_id, method.id, method.proficiency
+                )
+                result['unlocked_skills'] = unlocked
+
+            # 构建结果消息
+            lines = [
+                f"✨ 修炼 {method.get_display_name()} 完成",
+                "",
+                f"📊 熟练度 +{result['proficiency_gain']}",
+                f"🎯 当前熟练度：{result['mastery_level']}",
+                f"💫 灵根适配度：{result['compatibility']}%"
+            ]
+
+            if result['leveled_up']:
+                lines.append("")
+                lines.append(f"🎉 功法境界提升至 {result['mastery_level']}！")
+
+            if result['unlocked_skills']:
+                lines.append("")
+                lines.append("🔓 解锁新技能：")
+                for skill in result['unlocked_skills']:
+                    lines.append(f"   • {skill}")
+
+            yield event.plain_result("\n".join(lines))
+
+            logger.info(f"玩家 {user_id} 修炼功法: {method.name}，熟练度 +{result['proficiency_gain']}")
+
+        except MethodNotOwnError as e:
+            yield event.plain_result(f"❌ {str(e)}")
+        except Exception as e:
+            logger.error(f"修炼功法失败: {e}", exc_info=True)
+            yield event.plain_result(f"修炼功法失败：{str(e)}")
+
+    @filter.command("技能", alias={"skills", "我的技能"})
+    async def skills_cmd(self, event: AstrMessageEvent):
+        """查看技能列表"""
+        user_id = event.get_sender_id()
+
+        try:
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
+            skills = await self.skill_sys.get_player_skills(user_id)
+
+            if not skills:
+                yield event.plain_result("⚠️ 您还没有任何技能\n\n💡 通过修炼功法可以解锁技能")
+                return
+
+            lines = ["⚔️ 技能列表", "─" * 40, ""]
+
+            by_type = {}
+            for skill in skills:
+                if skill.skill_type not in by_type:
+                    by_type[skill.skill_type] = []
+                by_type[skill.skill_type].append(skill)
+
+            type_names = {
+                'attack': '⚔️ 攻击技能',
+                'defense': '🛡️ 防御技能',
+                'support': '✨ 辅助技能',
+                'control': '🎯 控制技能'
+            }
+
+            for skill_type, skill_list in by_type.items():
+                type_name = type_names.get(skill_type, skill_type)
+                lines.append(f"\n{type_name}:")
+                for i, skill in enumerate(skill_list, 1):
+                    lines.append(f"  {i}. {skill}")
+
+            lines.extend(["", "💡 使用 /使用技能 [技能名] 使用技能"])
+            yield event.plain_result("\n".join(lines))
+
+        except Exception as e:
+            logger.error(f"查看技能失败: {e}", exc_info=True)
+            yield event.plain_result(f"查看技能失败：{str(e)}")
+
+    @filter.command("使用技能", alias={"use_skill", "施放技能"})
+    async def use_skill_cmd(self, event: AstrMessageEvent):
+        """使用技能"""
+        user_id = event.get_sender_id()
+        message_text = self._get_message_text(event)
+
+        try:
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
+            # 解析命令参数
+            parts = message_text.split(maxsplit=1)
+
+            if len(parts) < 2:
+                # 显示技能列表
+                skills = await self.skill_sys.get_player_skills(user_id)
+                if not skills:
+                    yield event.plain_result("⚠️ 您还没有任何技能\n\n💡 通过修炼功法可以解锁技能")
+                    return
+
+                lines = ["⚔️ 使用技能", "─" * 40, "", "请输入要使用的技能名称：", ""]
+                for skill in skills:
+                    lines.append(f"  • {skill}")
+
+                lines.extend(["", "💡 使用方法：/使用技能 [技能名]", "💡 例如：/使用技能 火球术"])
+                yield event.plain_result("\n".join(lines))
+                return
+
+            skill_name = parts[1].strip()
+
+            # 使用技能
+            result = await self.skill_sys.use_skill(user_id, skill_name)
+
+            # 构建结果消息
+            lines = [
+                f"✨ 施放技能：{result['skill_name']}",
+                "",
+                f"💥 造成伤害：{result['damage']}",
+                f"💙 消耗法力：{result['mp_cost']} MP",
+                f"💫 剩余法力：{result['remaining_mp']} MP"
+            ]
+
+            if result['leveled_up']:
+                lines.append("")
+                lines.append("🎉 技能升级！伤害提升30%！")
+
+            yield event.plain_result("\n".join(lines))
+
+            logger.info(f"玩家 {user_id} 使用技能: {skill_name}")
+
+        except SkillNotFoundError as e:
+            yield event.plain_result(f"❌ {str(e)}")
+        except InsufficientMPError as e:
+            yield event.plain_result(f"❌ {str(e)}")
+        except Exception as e:
+            logger.error(f"使用技能失败: {e}", exc_info=True)
+            yield event.plain_result(f"使用技能失败：{str(e)}")
+
+    @filter.command("挑战", alias={"challenge", "pve"})
+    async def challenge_npc_cmd(self, event: AstrMessageEvent):
+        """挑战NPC妖兽"""
+        user_id = event.get_sender_id()
+
+        try:
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
+            # 解析命令参数
+            message_text = self._get_message_text(event)
+            parts = message_text.split()
+
+            # 获取NPC等级
+            npc_level = None
+            if len(parts) >= 2:
+                try:
+                    npc_level = int(parts[1])
+                    if npc_level < 1 or npc_level > 10:
+                        yield event.plain_result("❌ 等级范围：1-10")
+                        return
+                except ValueError:
+                    yield event.plain_result("❌ 等级必须是数字")
+                    return
+
+            # 获取玩家信息
+            player = await self.player_mgr.get_player_or_error(user_id)
+
+            if npc_level is None:
+                npc_level = player.realm_level
+
+            # 执行战斗
+            yield event.plain_result(f"⚔️ 正在挑战 {npc_level} 级妖兽...")
+
+            result = await self.combat_sys.battle_npc(user_id, npc_level)
+
+            # 构建战斗结果
+            lines = [
+                "⚔️ 战斗结果",
+                "─" * 40,
+                "",
+                f"挑战者：{player.name} ({player.realm} {player.realm_level}级)",
+                f"对手：{result['npc'].name}",
+                ""
+            ]
+
+            # 显示战斗过程（简化版）
+            combat_log = result['combat_log']
+            if len(combat_log) > 0:
+                lines.append("📜 战斗记录：")
+                for i, log_entry in enumerate(combat_log[-5:], 1):
+                    lines.append(f"  回合{log_entry.get('round', i)}: {log_entry.get('message', '')}")
+                lines.append("")
+
+            # 判断胜负
+            if result['winner'] == user_id:
+                lines.extend([
+                    "🎉 战斗胜利！",
+                    "",
+                    "🎁 获得奖励：",
+                    f"  💎 灵石 +{result['rewards']['spirit_stone']}",
+                    f"  ⭐ 经验 +{result['rewards']['exp']}",
+                    "",
+                    f"💰 当前灵石：{player.spirit_stone}"
+                ])
+            else:
+                lines.extend([
+                    "💔 战斗失败！",
+                    "",
+                    "💡 提升实力后再来挑战吧"
+                ])
+
+            yield event.plain_result("\n".join(lines))
+
+            logger.info(f"玩家 {user_id} 挑战{npc_level}级妖兽: {'胜利' if result['winner'] == user_id else '失败'}")
+
+        except Exception as e:
+            logger.error(f"挑战妖兽失败: {e}", exc_info=True)
+            yield event.plain_result(f"挑战失败：{str(e)}")
 
     @filter.command("创建宗门", alias={"create_sect", "建立宗门"})
     async def create_sect_cmd(self, event: AstrMessageEvent):

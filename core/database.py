@@ -70,7 +70,7 @@ class DatabaseManager:
             "crafting_logs", "tools", "profession_skills", "active_formations",
             "items", "sects", "sect_members", "ai_generation_history",
             "tribulations", "profession_exams", "locations", "player_locations",
-            "cultivation_methods"
+            "cultivation_methods", "player_cultivation_methods", "method_skills"
         ]
         
         for table in tables_to_backup:
@@ -96,7 +96,7 @@ class DatabaseManager:
             "crafting_logs", "tools", "profession_skills", "active_formations",
             "items", "sects", "sect_members", "ai_generation_history",
             "tribulations", "profession_exams", "locations", "player_locations",
-            "cultivation_methods"
+            "cultivation_methods", "player_cultivation_methods", "method_skills"
         ]
         
         for table in tables_to_restore:
@@ -141,7 +141,7 @@ class DatabaseManager:
             "crafting_logs", "tools", "profession_skills", "active_formations",
             "items", "sects", "sect_members", "ai_generation_history",
             "tribulations", "profession_exams", "locations", "player_locations",
-            "cultivation_methods"
+            "cultivation_methods", "player_cultivation_methods", "method_skills"
         ]
         
         for table in tables_to_drop:
@@ -566,6 +566,43 @@ class DatabaseManager:
         """)
         logger.info("创建表: player_locations")
 
+        # 玩家功法表
+        await self.execute("""
+            CREATE TABLE player_cultivation_methods (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL,
+                method_id TEXT NOT NULL,
+                is_main INTEGER DEFAULT 0,
+                proficiency INTEGER DEFAULT 0,
+                proficiency_stage TEXT DEFAULT '初窥门径',
+                compatibility INTEGER DEFAULT 50,
+                learned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                last_practice TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES players(user_id),
+                FOREIGN KEY (method_id) REFERENCES cultivation_methods(id)
+            )
+        """)
+        logger.info("创建表: player_cultivation_methods")
+
+        # 功法技能关联表
+        await self.execute("""
+            CREATE TABLE method_skills (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                method_id TEXT NOT NULL,
+                skill_name TEXT NOT NULL,
+                skill_type TEXT,
+                unlock_proficiency INTEGER DEFAULT 0,
+                element TEXT,
+                mp_cost INTEGER DEFAULT 10,
+                cooldown INTEGER DEFAULT 0,
+                base_damage INTEGER DEFAULT 0,
+                effect_description TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (method_id) REFERENCES cultivation_methods(id)
+            )
+        """)
+        logger.info("创建表: method_skills")
+
     async def _create_indexes(self):
         """创建索引以优化查询性能"""
         indexes = [
@@ -589,6 +626,10 @@ class DatabaseManager:
             "CREATE INDEX IF NOT EXISTS idx_locations_danger ON locations(danger_level)",
             "CREATE INDEX IF NOT EXISTS idx_player_locations_user ON player_locations(user_id)",
             "CREATE INDEX IF NOT EXISTS idx_player_locations_location ON player_locations(current_location_id)",
+            "CREATE INDEX IF NOT EXISTS idx_player_cultivation_methods_user ON player_cultivation_methods(user_id)",
+            "CREATE INDEX IF NOT EXISTS idx_player_cultivation_methods_method ON player_cultivation_methods(method_id)",
+            "CREATE INDEX IF NOT EXISTS idx_player_cultivation_methods_main ON player_cultivation_methods(user_id, is_main)",
+            "CREATE INDEX IF NOT EXISTS idx_method_skills_method ON method_skills(method_id)",
         ]
 
         for index_sql in indexes:
