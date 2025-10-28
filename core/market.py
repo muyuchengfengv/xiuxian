@@ -4,6 +4,7 @@
 """
 
 import uuid
+import json
 from typing import Dict, List, Optional
 from datetime import datetime
 from astrbot.api import logger
@@ -65,8 +66,6 @@ class MarketSystem:
 
     async def _init_npc_items(self):
         """初始化NPC上架的基础物品"""
-        import json
-
         # 检查是否已经初始化过
         existing = await self.db.fetchone(
             "SELECT id FROM market_items WHERE seller_id = 'npc' LIMIT 1"
@@ -148,8 +147,8 @@ class MarketSystem:
                 """
                 INSERT INTO market_items (
                     id, seller_id, item_type, item_id, item_name, quality,
-                    description, price, quantity, attributes, status, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    description, price, quantity, attributes, status, listed_at, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     listing_id,
@@ -163,6 +162,7 @@ class MarketSystem:
                     item["quantity"],
                     item["attributes"],
                     "active",
+                    datetime.now().isoformat(),
                     datetime.now().isoformat()
                 )
             )
@@ -202,6 +202,8 @@ class MarketSystem:
         # 根据类型验证物品所有权和可交易性
         item_name = ""
         quality = ""
+        description = ""
+        attributes = ""
 
         if item_type == "equipment":
             # 装备类型
@@ -220,6 +222,15 @@ class MarketSystem:
 
             item_name = equipment.get_display_name()
             quality = equipment.quality
+            description = getattr(equipment, 'description', '') or f"{equipment.quality}{equipment.type}装备"
+            # 将装备属性序列化为JSON
+            attributes = json.dumps({
+                'attack': equipment.attack,
+                'defense': equipment.defense,
+                'hp_bonus': equipment.hp_bonus,
+                'mp_bonus': equipment.mp_bonus,
+                'enhance_level': equipment.enhance_level
+            }, ensure_ascii=False)
             quantity = 1  # 装备数量固定为1
 
         elif item_type == "method":
@@ -235,6 +246,14 @@ class MarketSystem:
 
             item_name = method.get_display_name()
             quality = method.quality
+            description = method.description or f"{method.quality}品{method.method_type}功法"
+            # 将功法属性序列化为JSON
+            attributes = json.dumps({
+                'method_type': method.method_type,
+                'element_type': method.element_type,
+                'grade': method.grade,
+                'cultivation_speed_bonus': method.cultivation_speed_bonus
+            }, ensure_ascii=False)
             quantity = 1  # 功法数量固定为1
 
         elif item_type in ["pill", "material"]:
@@ -249,6 +268,8 @@ class MarketSystem:
 
             item_name = item_data['name']
             quality = item_data.get('quality', '凡品')
+            description = item_data.get('description', '') or item_data.get('effect', '')
+            attributes = item_data.get('effect', '')
 
             # 扣除物品数量
             await self.item_mgr.remove_item(user_id, item_id, quantity)
@@ -264,10 +285,13 @@ class MarketSystem:
             'item_id': item_id,
             'item_name': item_name,
             'quality': quality,
+            'description': description,
             'price': price,
             'quantity': quantity,
+            'attributes': attributes,
             'status': 'active',
-            'listed_at': datetime.now().isoformat()
+            'listed_at': datetime.now().isoformat(),
+            'created_at': datetime.now().isoformat()
         }
 
         # 插入数据库（将在下一个任务中实现表结构）
@@ -580,10 +604,13 @@ class MarketSystem:
                 item_id TEXT NOT NULL,
                 item_name TEXT NOT NULL,
                 quality TEXT,
+                description TEXT,
                 price INTEGER NOT NULL,
                 quantity INTEGER DEFAULT 1,
+                attributes TEXT,
                 status TEXT DEFAULT 'active',
                 listed_at TEXT NOT NULL,
+                created_at TEXT,
                 sold_at TEXT
             )
         """)
