@@ -21,6 +21,8 @@ from .constants import (
     REALMS,
     REALM_ORDER,
     REALM_LEVEL_NAMES,
+    IMMORTAL_LEVEL_NAMES,
+    SUPREME_LEVEL_NAMES,
     SPIRIT_ROOTS,
     SPIRIT_ROOT_QUALITIES,
     SPIRIT_ROOT_WEIGHTS,
@@ -39,7 +41,9 @@ from .constants import (
     PROFESSION_RANKS,
     get_realm_by_index,
     get_next_realm,
-    get_cultivation_required
+    get_cultivation_required,
+    get_realm_level_name,
+    get_realm_stage
 )
 
 __all__ = [
