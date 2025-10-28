@@ -81,6 +81,7 @@ class NPC:
             defense: 防御力
             rewards: 奖励
         """
+        self.user_id = f"npc_{name}_{level}"  # NPC的唯一标识
         self.name = name
         self.realm = realm
         self.level = level

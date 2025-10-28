@@ -149,19 +149,19 @@ class XiuxianPlugin(Star):
             logger.info("✓ 核心系统初始化完成")
             logger.info("✓ 技能系统初始化完成")
 
-            # 初始化职业系统
-            logger.info("🔨 正在初始化职业系统...")
-            self.profession_mgr = ProfessionManager(self.db, self.player_mgr)
-            self.alchemy_sys = AlchemySystem(self.db, self.player_mgr, self.profession_mgr)
-            self.refining_sys = RefiningSystem(self.db, self.player_mgr, self.profession_mgr)
-            self.formation_sys = FormationSystem(self.db, self.player_mgr, self.profession_mgr)
-            self.talisman_sys = TalismanSystem(self.db, self.player_mgr, self.profession_mgr)
-            logger.info("✓ 职业系统初始化完成")
-
-            # 初始化物品系统
+            # 初始化物品系统（职业系统需要用到）
             logger.info("📦 正在初始化物品系统...")
             self.item_mgr = ItemManager(self.db, self.player_mgr)
             logger.info("✓ 物品系统初始化完成")
+
+            # 初始化职业系统
+            logger.info("🔨 正在初始化职业系统...")
+            self.profession_mgr = ProfessionManager(self.db, self.player_mgr)
+            self.alchemy_sys = AlchemySystem(self.db, self.player_mgr, self.profession_mgr, self.item_mgr)
+            self.refining_sys = RefiningSystem(self.db, self.player_mgr, self.profession_mgr)
+            self.formation_sys = FormationSystem(self.db, self.player_mgr, self.profession_mgr)
+            self.talisman_sys = TalismanSystem(self.db, self.player_mgr, self.profession_mgr, self.item_mgr)
+            logger.info("✓ 职业系统初始化完成")
 
             # 初始化坊市系统
             logger.info("🏪 正在初始化坊市系统...")
@@ -884,7 +884,7 @@ class XiuxianPlugin(Star):
 
     @filter.command("储物袋", alias={"背包", "bag", "inventory"})
     async def inventory_cmd(self, event: AstrMessageEvent):
-        """查看储物袋装备"""
+        """查看储物袋（装备+物品）"""
         user_id = event.get_sender_id()
 
         try:
@@ -893,10 +893,61 @@ class XiuxianPlugin(Star):
                 yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
                 return
 
-            # 获取装备列表
-            inventory_text = await self.equipment_sys.format_equipment_list(user_id)
+            lines = ["📦 储物袋", "─" * 40, ""]
 
-            yield event.plain_result(inventory_text)
+            # 1. 显示装备
+            equipment_list = await self.equipment_sys.get_player_equipment(user_id)
+            if equipment_list:
+                lines.append("⚔️ 装备:")
+                for i, equipment in enumerate(equipment_list, 1):
+                    status = "✅" if equipment.is_equipped else "⭕"
+                    lines.append(f"  {i}. {status} {equipment.get_display_name()}")
+                lines.append("")
+
+            # 2. 显示丹药
+            pills = await self.item_mgr.get_player_items(user_id, "pill")
+            if pills:
+                lines.append("💊 丹药:")
+                for pill in pills:
+                    lines.append(f"  • {pill['item_name']} x{pill['quantity']}")
+                    if pill.get('description'):
+                        lines.append(f"    {pill['description']}")
+                lines.append("")
+
+            # 3. 显示符箓
+            talismans = await self.item_mgr.get_player_items(user_id, "talisman")
+            if talismans:
+                lines.append("📜 符箓:")
+                for talisman in talismans:
+                    lines.append(f"  • {talisman['item_name']} x{talisman['quantity']}")
+                lines.append("")
+
+            # 4. 显示材料
+            materials = await self.item_mgr.get_player_items(user_id, "material")
+            if materials:
+                lines.append("🌿 材料:")
+                for material in materials:
+                    lines.append(f"  • {material['item_name']} x{material['quantity']}")
+                lines.append("")
+
+            # 5. 显示其他物品
+            other_items = await self.item_mgr.get_player_items(user_id, "consumable")
+            if other_items:
+                lines.append("🎁 其他:")
+                for item in other_items:
+                    lines.append(f"  • {item['item_name']} x{item['quantity']}")
+                lines.append("")
+
+            if not equipment_list and not pills and not talismans and not materials and not other_items:
+                lines.append("储物袋空空如也")
+                lines.append("")
+
+            lines.extend([
+                "💡 使用 /装备 [编号] 穿戴装备",
+                "💡 使用 /使用 [物品名] 使用物品"
+            ])
+
+            yield event.plain_result("\n".join(lines))
 
         except PlayerNotFoundError as e:
             yield event.plain_result(str(e))

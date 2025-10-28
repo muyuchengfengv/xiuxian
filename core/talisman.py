@@ -559,7 +559,8 @@ class TalismanSystem:
         self,
         db: DatabaseManager,
         player_mgr: PlayerManager,
-        profession_mgr: ProfessionManager
+        profession_mgr: ProfessionManager,
+        item_mgr = None
     ):
         """
         初始化符箓系统
@@ -568,10 +569,12 @@ class TalismanSystem:
             db: 数据库管理器
             player_mgr: 玩家管理器
             profession_mgr: 职业管理器
+            item_mgr: 物品管理器（可选）
         """
         self.db = db
         self.player_mgr = player_mgr
         self.profession_mgr = profession_mgr
+        self.item_mgr = item_mgr
 
     async def init_base_talismans(self):
         """初始化基础符箓配方"""
@@ -706,46 +709,65 @@ class TalismanSystem:
         # 消耗灵石
         await self.player_mgr.add_spirit_stone(user_id, -spirit_stone_cost)
 
-        # TODO: 添加符箓到背包 (需要物品系统)
-        # 这里暂时存储到items表
+        # 添加符箓到背包
         if success_count > 0:
-            # 检查是否已有该符箓
-            existing = await self.db.fetchone(
-                """
-                SELECT id, quantity FROM items
-                WHERE user_id = ? AND item_type = 'talisman' AND item_name = ?
-                """,
-                (user_id, talisman['name'])
-            )
+            talisman_quality = f"{talisman['rank']}品"
+            talisman_description = talisman['description']
 
-            if existing:
-                # 更新数量
-                new_quantity = existing['quantity'] + success_count
-                await self.db.execute(
-                    "UPDATE items SET quantity = ? WHERE id = ?",
-                    (new_quantity, existing['id'])
+            # 解析符箓效果
+            try:
+                talisman_effect = json.loads(special_req.get('effects', '{}'))
+            except:
+                talisman_effect = {}
+
+            if self.item_mgr:
+                # 使用ItemManager添加符箓
+                await self.item_mgr.add_item(
+                    user_id=user_id,
+                    item_name=talisman['name'],
+                    item_type="talisman",
+                    quality=talisman_quality,
+                    quantity=success_count,
+                    description=talisman_description,
+                    effect=talisman_effect
                 )
+                logger.info(f"玩家 {user_id} 绘制符箓: {talisman['name']} x{success_count}")
             else:
-                # 创建新符箓
-                expires_at = datetime.now() + timedelta(days=special_req.get('duration_days', 30))
-                await self.db.execute(
+                # 如果没有ItemManager，使用旧方法（向后兼容）
+                existing = await self.db.fetchone(
                     """
-                    INSERT INTO items (
-                        user_id, item_type, item_name, quality, quantity,
-                        description, effect, created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    SELECT id, quantity FROM items
+                    WHERE user_id = ? AND item_type = 'talisman' AND item_name = ?
                     """,
-                    (
-                        user_id,
-                        'talisman',
-                        talisman['name'],
-                        f"{talisman['rank']}品",
-                        success_count,
-                        talisman['description'],
-                        special_req.get('effects', '{}'),
-                        datetime.now().isoformat()
-                    )
+                    (user_id, talisman['name'])
                 )
+
+                if existing:
+                    new_quantity = existing['quantity'] + success_count
+                    await self.db.execute(
+                        "UPDATE items SET quantity = ? WHERE id = ?",
+                        (new_quantity, existing['id'])
+                    )
+                else:
+                    await self.db.execute(
+                        """
+                        INSERT INTO items (
+                            user_id, item_type, item_name, quality, quantity,
+                            description, effect, created_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            user_id,
+                            'talisman',
+                            talisman['name'],
+                            talisman_quality,
+                            success_count,
+                            talisman_description,
+                            json.dumps(talisman_effect, ensure_ascii=False),
+                            datetime.now().isoformat()
+                        )
+                    )
+                logger.warning("物品管理器未初始化，使用旧方法添加符箓")
 
         # 获得经验
         exp_gain = self._calculate_experience(talisman['rank'], success_count, failed_count)

@@ -458,7 +458,8 @@ class AlchemySystem:
         self,
         db: DatabaseManager,
         player_mgr: PlayerManager,
-        profession_mgr: ProfessionManager
+        profession_mgr: ProfessionManager,
+        item_mgr = None
     ):
         """
         初始化炼丹系统
@@ -467,10 +468,12 @@ class AlchemySystem:
             db: 数据库管理器
             player_mgr: 玩家管理器
             profession_mgr: 职业管理器
+            item_mgr: 物品管理器（可选）
         """
         self.db = db
         self.player_mgr = player_mgr
         self.profession_mgr = profession_mgr
+        self.item_mgr = item_mgr
         self.sect_sys = None  # 宗门系统（可选）
 
     def set_sect_system(self, sect_sys):
@@ -634,7 +637,26 @@ class AlchemySystem:
         # 消耗灵石
         await self.player_mgr.add_spirit_stone(user_id, -spirit_stone_cost)
 
-        # TODO: 添加丹药到背包 (需要物品系统)
+        # 添加丹药到背包
+        pill_full_name = f"{quality}{recipe['output_name']}"
+        pill_description = f"{recipe['description']} (品质:{quality})"
+
+        # 解析丹药效果
+        pill_effect = json.loads(recipe.get('effect', '{}'))
+
+        if self.item_mgr:
+            await self.item_mgr.add_item(
+                user_id=user_id,
+                item_name=pill_full_name,
+                item_type="pill",
+                quality=quality,
+                quantity=1,
+                description=pill_description,
+                effect=pill_effect
+            )
+            logger.info(f"玩家 {user_id} 获得丹药: {pill_full_name}")
+        else:
+            logger.warning("物品管理器未初始化，丹药无法添加到背包")
 
         # 获得经验
         exp_gain = self._calculate_experience(recipe['rank'], quality)
