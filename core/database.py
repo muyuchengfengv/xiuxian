@@ -66,10 +66,11 @@ class DatabaseManager:
         
         # 备份所有表的数据
         tables_to_backup = [
-            "players", "equipment", "skills", "professions", "recipes", 
+            "players", "equipment", "skills", "professions", "recipes",
             "crafting_logs", "tools", "profession_skills", "active_formations",
             "items", "sects", "sect_members", "ai_generation_history",
-            "tribulations", "profession_exams", "locations", "player_locations"
+            "tribulations", "profession_exams", "locations", "player_locations",
+            "cultivation_methods"
         ]
         
         for table in tables_to_backup:
@@ -91,10 +92,11 @@ class DatabaseManager:
         
         # 还原所有表的数据
         tables_to_restore = [
-            "players", "equipment", "skills", "professions", "recipes", 
+            "players", "equipment", "skills", "professions", "recipes",
             "crafting_logs", "tools", "profession_skills", "active_formations",
             "items", "sects", "sect_members", "ai_generation_history",
-            "tribulations", "profession_exams", "locations", "player_locations"
+            "tribulations", "profession_exams", "locations", "player_locations",
+            "cultivation_methods"
         ]
         
         for table in tables_to_restore:
@@ -135,7 +137,7 @@ class DatabaseManager:
 
         # 先删除所有现有表
         tables_to_drop = [
-            "players", "equipment", "skills", "professions", "recipes", 
+            "players", "equipment", "skills", "professions", "recipes",
             "crafting_logs", "tools", "profession_skills", "active_formations",
             "items", "sects", "sect_members", "ai_generation_history",
             "tribulations", "profession_exams", "locations", "player_locations",
@@ -193,9 +195,35 @@ class DatabaseManager:
         """)
         logger.info("创建表: players")
 
+        # 装备表
+        await self.execute("""
+            CREATE TABLE equipment (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                name TEXT NOT NULL,
+                type TEXT NOT NULL,
+                sub_type TEXT,
+                quality TEXT NOT NULL,
+                level INTEGER NOT NULL,
+                enhance_level INTEGER DEFAULT 0,
+                attack INTEGER DEFAULT 0,
+                defense INTEGER DEFAULT 0,
+                hp_bonus INTEGER DEFAULT 0,
+                mp_bonus INTEGER DEFAULT 0,
+                extra_attrs TEXT,
+                special_effect TEXT,
+                skill_id INTEGER,
+                is_equipped INTEGER DEFAULT 0,
+                is_bound INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES players(user_id)
+            )
+        """)
+        logger.info("创建表: equipment")
+
         # 技能表
         await self.execute("""
-            CREATE TABLE IF NOT EXISTS skills (
+            CREATE TABLE skills (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id TEXT NOT NULL,
                 skill_name TEXT NOT NULL,
@@ -217,7 +245,7 @@ class DatabaseManager:
 
         # 职业信息表
         await self.execute("""
-            CREATE TABLE IF NOT EXISTS professions (
+            CREATE TABLE professions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id TEXT NOT NULL,
                 profession_type TEXT NOT NULL,
@@ -236,7 +264,7 @@ class DatabaseManager:
 
         # 配方/图纸/阵法/符箓表
         await self.execute("""
-            CREATE TABLE IF NOT EXISTS recipes (
+            CREATE TABLE recipes (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id TEXT,
                 recipe_type TEXT NOT NULL,
@@ -257,7 +285,7 @@ class DatabaseManager:
 
         # 炼制记录表
         await self.execute("""
-            CREATE TABLE IF NOT EXISTS crafting_logs (
+            CREATE TABLE crafting_logs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id TEXT NOT NULL,
                 craft_type TEXT NOT NULL,
@@ -277,7 +305,7 @@ class DatabaseManager:
 
         # 工具表（丹炉、器炉等）
         await self.execute("""
-            CREATE TABLE IF NOT EXISTS tools (
+            CREATE TABLE tools (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id TEXT NOT NULL,
                 tool_type TEXT NOT NULL,
@@ -297,7 +325,7 @@ class DatabaseManager:
 
         # 职业技能表
         await self.execute("""
-            CREATE TABLE IF NOT EXISTS profession_skills (
+            CREATE TABLE profession_skills (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id TEXT NOT NULL,
                 profession_type TEXT NOT NULL,
@@ -314,7 +342,7 @@ class DatabaseManager:
 
         # 活跃阵法表
         await self.execute("""
-            CREATE TABLE IF NOT EXISTS active_formations (
+            CREATE TABLE active_formations (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id TEXT NOT NULL,
                 formation_name TEXT NOT NULL,
@@ -334,7 +362,7 @@ class DatabaseManager:
 
         # 物品表 (用于存储符箓等消耗品)
         await self.execute("""
-            CREATE TABLE IF NOT EXISTS items (
+            CREATE TABLE items (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id TEXT NOT NULL,
                 item_type TEXT NOT NULL,
@@ -349,25 +377,77 @@ class DatabaseManager:
         """)
         logger.info("创建表: items")
 
-        # 注意: cultivation_methods 表由 CultivationMethodSystem 自行管理
-        # 见 core/cultivation_method.py::_ensure_methods_table()
-        # 该系统使用独立的表结构定义以支持更复杂的功法系统功能
+        # 功法表
+        await self.execute("""
+            CREATE TABLE cultivation_methods (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                name TEXT NOT NULL,
+                description TEXT,
+                method_type TEXT NOT NULL,
+                element_type TEXT NOT NULL,
+                cultivation_type TEXT NOT NULL,
+                quality TEXT NOT NULL,
+                grade INTEGER NOT NULL,
+                min_realm TEXT NOT NULL,
+                min_realm_level INTEGER NOT NULL,
+                min_level INTEGER NOT NULL,
+                attack_bonus INTEGER DEFAULT 0,
+                defense_bonus INTEGER DEFAULT 0,
+                speed_bonus INTEGER DEFAULT 0,
+                hp_bonus INTEGER DEFAULT 0,
+                mp_bonus INTEGER DEFAULT 0,
+                cultivation_speed_bonus REAL DEFAULT 0.0,
+                breakthrough_rate_bonus REAL DEFAULT 0.0,
+                special_effects TEXT,
+                skill_damage INTEGER DEFAULT 0,
+                cooldown_reduction REAL DEFAULT 0.0,
+                owner_id TEXT,
+                is_equipped INTEGER DEFAULT 0,
+                equip_slot TEXT,
+                proficiency INTEGER DEFAULT 0,
+                max_proficiency INTEGER DEFAULT 1000,
+                mastery_level INTEGER DEFAULT 0,
+                source_type TEXT,
+                source_detail TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                equipped_at TIMESTAMP,
+                last_practiced_at TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES players(user_id),
+                FOREIGN KEY (owner_id) REFERENCES players(user_id)
+            )
+        """)
+        logger.info("创建表: cultivation_methods")
 
         # 宗门表
         await self.execute("""
             CREATE TABLE sects (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id TEXT PRIMARY KEY,
                 name TEXT UNIQUE NOT NULL,
-                founder_id TEXT NOT NULL,
-                level INTEGER DEFAULT 1,
-                reputation INTEGER DEFAULT 0,
-                resource_pool INTEGER DEFAULT 0,
-                max_members INTEGER DEFAULT 50,
-                member_count INTEGER DEFAULT 1,
                 description TEXT,
                 announcement TEXT,
+                sect_type TEXT NOT NULL,
+                sect_style TEXT NOT NULL,
+                level INTEGER DEFAULT 1,
+                experience INTEGER DEFAULT 0,
+                max_experience INTEGER DEFAULT 1000,
+                spirit_stone INTEGER DEFAULT 0,
+                contribution INTEGER DEFAULT 0,
+                reputation INTEGER DEFAULT 0,
+                power INTEGER DEFAULT 0,
+                leader_id TEXT NOT NULL,
+                member_count INTEGER DEFAULT 0,
+                max_members INTEGER DEFAULT 20,
+                buildings TEXT,
+                sect_skills TEXT,
+                is_recruiting INTEGER DEFAULT 1,
+                join_requirement TEXT,
+                in_war INTEGER DEFAULT 0,
+                war_target_id TEXT,
+                war_score INTEGER DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (founder_id) REFERENCES players(user_id)
+                last_active_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (leader_id) REFERENCES players(user_id)
             )
         """)
         logger.info("创建表: sects")
@@ -376,29 +456,29 @@ class DatabaseManager:
         await self.execute("""
             CREATE TABLE sect_members (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                sect_id INTEGER NOT NULL,
-                user_id TEXT NOT NULL,
-                position TEXT DEFAULT '外门弟子',
+                user_id TEXT UNIQUE NOT NULL,
+                sect_id TEXT NOT NULL,
+                position TEXT NOT NULL,
+                position_level INTEGER NOT NULL,
                 contribution INTEGER DEFAULT 0,
+                total_contribution INTEGER DEFAULT 0,
+                activity INTEGER DEFAULT 0,
+                last_active_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (sect_id) REFERENCES sects(id),
-                FOREIGN KEY (user_id) REFERENCES players(user_id),
-                UNIQUE(sect_id, user_id)
+                FOREIGN KEY (user_id) REFERENCES players(user_id)
             )
         """)
         logger.info("创建表: sect_members")
 
         # AI生成历史表
         await self.execute("""
-            CREATE TABLE IF NOT EXISTS ai_generation_history (
+            CREATE TABLE ai_generation_history (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id TEXT NOT NULL,
-                generation_type TEXT NOT NULL,
-                prompt TEXT,
-                result TEXT,
-                metadata TEXT,
-                success BOOLEAN DEFAULT 1,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                content_type TEXT NOT NULL,
+                content_id TEXT NOT NULL,
+                generated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (user_id) REFERENCES players(user_id)
             )
         """)
@@ -435,17 +515,16 @@ class DatabaseManager:
 
         # 职业考核表
         await self.execute("""
-            CREATE TABLE IF NOT EXISTS profession_exams (
+            CREATE TABLE profession_exams (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id TEXT NOT NULL,
                 profession_type TEXT NOT NULL,
                 target_rank INTEGER NOT NULL,
+                exam_title TEXT NOT NULL,
+                tasks TEXT,
+                results TEXT,
                 status TEXT DEFAULT 'in_progress',
-                tasks_completed TEXT,
-                score INTEGER DEFAULT 0,
-                passed BOOLEAN,
-                rewards TEXT,
-                started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 completed_at TIMESTAMP,
                 FOREIGN KEY (user_id) REFERENCES players(user_id)
             )
@@ -454,7 +533,7 @@ class DatabaseManager:
 
         # 地点表
         await self.execute("""
-            CREATE TABLE IF NOT EXISTS locations (
+            CREATE TABLE locations (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL UNIQUE,
                 description TEXT NOT NULL,
@@ -475,7 +554,7 @@ class DatabaseManager:
 
         # 玩家位置表
         await self.execute("""
-            CREATE TABLE IF NOT EXISTS player_locations (
+            CREATE TABLE player_locations (
                 user_id TEXT PRIMARY KEY,
                 current_location_id INTEGER NOT NULL,
                 last_move_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -517,64 +596,6 @@ class DatabaseManager:
 
         logger.info("索引创建完成")
 
-    async def _migrate_database(self):
-        """数据库迁移：为现有表添加新字段"""
-        try:
-            logger.info("开始检查数据库迁移...")
-
-            # 检查 players 表是否需要添加闭关相关字段
-            await self._add_column_if_not_exists(
-                "players",
-                "in_retreat",
-                "INTEGER DEFAULT 0"
-            )
-            await self._add_column_if_not_exists(
-                "players",
-                "retreat_start",
-                "TIMESTAMP"
-            )
-            await self._add_column_if_not_exists(
-                "players",
-                "retreat_duration",
-                "INTEGER DEFAULT 0"
-            )
-
-            # 检查 sects 表是否需要添加 power 字段
-            # power 字段用于存储宗门实力值(所有成员战力总和)
-            await self._add_column_if_not_exists(
-                "sects",
-                "power",
-                "INTEGER DEFAULT 0"
-            )
-
-            # 检查 cultivation_methods 表是否需要添加 owner_id 字段
-            # owner_id 用于标识功法拥有者
-            await self._add_column_if_not_exists(
-                "cultivation_methods",
-                "owner_id",
-                "TEXT"
-            )
-
-            # 如果 cultivation_methods 表中存在 user_id 列但没有 owner_id，
-            # 需要将 user_id 的值复制到 owner_id
-            if await self.table_exists("cultivation_methods"):
-                table_info = await self.get_table_info("cultivation_methods")
-                has_user_id = any(col['name'] == 'user_id' for col in table_info)
-                has_owner_id = any(col['name'] == 'owner_id' for col in table_info)
-
-                if has_user_id and has_owner_id:
-                    # 将 user_id 的值复制到 owner_id (如果 owner_id 为空)
-                    await self.execute(
-                        "UPDATE cultivation_methods SET owner_id = user_id WHERE owner_id IS NULL"
-                    )
-                    logger.info("已将 cultivation_methods 表中的 user_id 复制到 owner_id")
-
-            logger.info("数据库迁移完成")
-
-        except Exception as e:
-            logger.error(f"数据库迁移失败: {e}", exc_info=True)
-            # 迁移失败不应该中断初始化，只记录错误
-            pass
 
     async def _seed_initial_locations(self):
         """初始化基础地点数据"""
@@ -734,31 +755,6 @@ class DatabaseManager:
             logger.error(f"初始化基础地点失败: {e}", exc_info=True)
             pass
 
-    async def _add_column_if_not_exists(self, table_name: str, column_name: str, column_type: str):
-        """
-        如果列不存在，则添加列
-
-        Args:
-            table_name: 表名
-            column_name: 列名
-            column_type: 列类型和约束
-        """
-        try:
-            # 检查列是否存在
-            table_info = await self.get_table_info(table_name)
-            column_exists = any(col['name'] == column_name for col in table_info)
-
-            if not column_exists:
-                # 添加列
-                sql = f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}"
-                await self.execute(sql)
-                logger.info(f"添加列: {table_name}.{column_name}")
-            else:
-                logger.debug(f"列已存在: {table_name}.{column_name}")
-
-        except Exception as e:
-            logger.error(f"添加列失败 {table_name}.{column_name}: {e}")
-            raise
 
     async def execute(
         self,
