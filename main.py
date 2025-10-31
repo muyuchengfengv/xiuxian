@@ -880,7 +880,10 @@ class XiuxianPlugin(Star):
 
             # 尝试从消息中提取@用户
             import re
-            at_pattern = r'@(\S+)'
+            # 支持两种格式：
+            # 1. @用户名(ID) - 如 @小皮(2984301456)
+            # 2. @用户名 - 如 @小皮
+            at_pattern = r'@([^()\s]+)(?:\((\d+)\))?'
             matches = re.findall(at_pattern, message_text)
 
             if not matches:
@@ -890,33 +893,36 @@ class XiuxianPlugin(Star):
                 )
                 return
 
-            defender_name = matches[0]
+            # matches[0] = (用户名, ID) 或 (用户名, '')
+            defender_name, potential_user_id = matches[0]
 
             # 3. 尝试找到目标玩家
-            # 先尝试通过用户名查找玩家
             defender = None
             defender_id = None
 
-            # 方法1: 尝试通过用户名直接查找
-            all_players = await self.player_mgr.get_all_players()
-            for player in all_players:
-                if player.name == defender_name:
-                    defender = player
-                    defender_id = player.user_id
-                    break
-
-            # 方法2: 如果用户名查找失败，尝试通过完整匹配查找
-            if defender is None:
-                # 检查是否是用户ID格式（去掉可能的@前缀）
-                potential_id = defender_name.lstrip('@')
+            # 方法1: 优先使用ID查找（如果有ID）
+            if potential_user_id:
                 try:
-                    defender = await self.player_mgr.get_player_or_error(potential_id)
-                    defender_id = potential_id
+                    defender = await self.player_mgr.get_player_or_error(potential_user_id)
+                    defender_id = potential_user_id
+                    logger.info(f"通过ID找到玩家: {defender.name} (ID: {defender_id})")
                 except PlayerNotFoundError:
+                    logger.warning(f"未找到ID为 {potential_user_id} 的玩家")
                     pass
+
+            # 方法2: 通过用户名直接查找
+            if defender is None:
+                all_players = await self.player_mgr.get_all_players()
+                for player in all_players:
+                    if player.name == defender_name:
+                        defender = player
+                        defender_id = player.user_id
+                        logger.info(f"通过用户名找到玩家: {defender.name} (ID: {defender_id})")
+                        break
 
             # 方法3: 模糊匹配用户名
             if defender is None:
+                all_players = await self.player_mgr.get_all_players()
                 matched_players = [
                     player for player in all_players
                     if defender_name.lower() in player.name.lower() or
@@ -926,6 +932,7 @@ class XiuxianPlugin(Star):
                 if len(matched_players) == 1:
                     defender = matched_players[0]
                     defender_id = defender.user_id
+                    logger.info(f"通过模糊匹配找到玩家: {defender.name} (ID: {defender_id})")
                 elif len(matched_players) > 1:
                     yield event.plain_result(
                         f"⚠️ 找到多个匹配的玩家：\n\n"
@@ -936,9 +943,14 @@ class XiuxianPlugin(Star):
 
             # 检查是否找到目标玩家
             if defender is None:
+                debug_info = f"用户名: {defender_name}"
+                if potential_user_id:
+                    debug_info += f", ID: {potential_user_id}"
+
                 yield event.plain_result(
                     f"⚠️ 未找到玩家 @{defender_name}\n\n"
-                    f"💡 请确认玩家名是否正确，或该玩家是否已创建角色"
+                    f"💡 请确认玩家名是否正确，或该玩家是否已创建角色\n\n"
+                    f"🔍 调试信息: {debug_info}"
                 )
                 return
 
