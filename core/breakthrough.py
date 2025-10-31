@@ -202,25 +202,63 @@ class BreakthroughSystem:
             player: 玩家对象
             next_realm_info: 下一境界信息
         """
-        # 1. 更新境界和等级
+        # 1. 记录旧境界信息
+        old_realm = player.realm
+        old_realm_level = player.realm_level
+
+        # 2. 更新境界和等级
         player.realm = next_realm_info['realm']
         player.realm_level = next_realm_info['level']
 
-        # 2. 扣除突破所需修为
+        # 3. 应用境界属性加成
+        from ..utils.constants import REALMS
+        new_realm_config = REALMS.get(player.realm, REALMS["炼气期"])
+        attribute_bonus = new_realm_config.get("attribute_bonus", {})
+
+        # 判断是小境界提升还是大境界突破
+        if old_realm == player.realm:
+            # 小境界提升：属性按比例增长（每级25%的境界属性加成）
+            level_ratio = 0.25
+            hp_bonus = int(attribute_bonus.get("max_hp", 0) * level_ratio)
+            mp_bonus = int(attribute_bonus.get("max_mp", 0) * level_ratio)
+            attack_bonus = int(attribute_bonus.get("attack", 0) * level_ratio)
+            defense_bonus = int(attribute_bonus.get("defense", 0) * level_ratio)
+        else:
+            # 大境界突破：获得完整的境界属性加成
+            hp_bonus = attribute_bonus.get("max_hp", 0)
+            mp_bonus = attribute_bonus.get("max_mp", 0)
+            attack_bonus = attribute_bonus.get("attack", 0)
+            defense_bonus = attribute_bonus.get("defense", 0)
+
+        # 应用属性加成
+        player.max_hp += hp_bonus
+        player.max_mp += mp_bonus
+        player.attack += attack_bonus
+        player.defense += defense_bonus
+
+        # 突破成功后恢复满血满蓝
+        player.hp = player.max_hp
+        player.mp = player.max_mp
+
+        # 4. 扣除突破所需修为
         required_cultivation = next_realm_info['required']
         player.cultivation -= required_cultivation
 
-        # 3. 突破成功奖励（额外修为）
+        # 5. 突破成功奖励（额外修为）
         bonus_cultivation = int(required_cultivation * 0.1)  # 10%额外修为奖励
         player.cultivation += bonus_cultivation
 
-        # 4. 更新时间戳
+        # 6. 更新时间戳
         player.updated_at = datetime.now()
 
-        # 5. 保存到数据库
+        # 7. 保存到数据库
         await self.player_mgr.update_player(player)
 
-        logger.info(f"玩家 {player.name} 突破成功, 获得奖励修为: {bonus_cultivation}")
+        logger.info(
+            f"玩家 {player.name} 突破成功, 获得奖励修为: {bonus_cultivation}, "
+            f"属性提升 - HP:+{hp_bonus}({player.max_hp}), MP:+{mp_bonus}({player.max_mp}), "
+            f"攻击:+{attack_bonus}({player.attack}), 防御:+{defense_bonus}({player.defense})"
+        )
 
     async def _handle_breakthrough_failure(self, player: Player):
         """

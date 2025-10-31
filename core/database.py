@@ -50,6 +50,9 @@ class DatabaseManager:
             # 初始化基础地点数据
             await self._seed_initial_locations()
 
+            # 修复现有玩家的属性（如果有突破系统bug导致的属性异常）
+            await self._fix_player_attributes()
+
             logger.info("数据库初始化完成")
 
         except Exception as e:
@@ -799,6 +802,186 @@ class DatabaseManager:
             logger.error(f"初始化基础地点失败: {e}", exc_info=True)
             pass
 
+    async def _fix_player_attributes(self):
+        """修复现有玩家的属性异常问题"""
+        try:
+            # 检查是否有玩家数据
+            cursor = await self.execute("SELECT COUNT(*) as count FROM players")
+            row = await cursor.fetchone()
+
+            if not row or row['count'] == 0:
+                logger.info("没有玩家数据，跳过属性修复")
+                return
+
+            logger.info(f"开始修复 {row['count']} 个玩家的属性...")
+
+            # 获取所有玩家
+            players_data = await self.fetchall("SELECT * FROM players")
+            fixed_count = 0
+
+            for player_data in players_data:
+                try:
+                    # 转换为Player对象
+                    from ..models.player_model import Player
+                    player = Player.from_dict(dict(player_data))
+
+                    # 计算正确属性
+                    correct_attrs = self._calculate_correct_attributes(player)
+
+                    # 检查是否需要修复
+                    needs_fix = (
+                        player.max_hp != correct_attrs['max_hp'] or
+                        player.max_mp != correct_attrs['max_mp'] or
+                        player.attack != correct_attrs['attack'] or
+                        player.defense != correct_attrs['defense']
+                    )
+
+                    if needs_fix:
+                        # 更新玩家属性
+                        await self.execute("""
+                            UPDATE players
+                            SET max_hp = ?, hp = ?, max_mp = ?, mp = ?,
+                                attack = ?, defense = ?, updated_at = CURRENT_TIMESTAMP
+                            WHERE user_id = ?
+                        """, (
+                            correct_attrs['max_hp'],
+                            correct_attrs['hp'],
+                            correct_attrs['max_mp'],
+                            correct_attrs['mp'],
+                            correct_attrs['attack'],
+                            correct_attrs['defense'],
+                            player.user_id
+                        ))
+                        fixed_count += 1
+
+                        logger.debug(f"修复玩家 {player.name} 的属性: "
+                                   f"HP {player.max_hp}->{correct_attrs['max_hp']}, "
+                                   f"MP {player.max_mp}->{correct_attrs['max_mp']}, "
+                                   f"攻击 {player.attack}->{correct_attrs['attack']}, "
+                                   f"防御 {player.defense}->{correct_attrs['defense']}")
+
+                except Exception as e:
+                    logger.error(f"修复玩家 {player_data.get('name', 'Unknown')} 属性失败: {e}")
+                    continue
+
+            logger.info(f"玩家属性修复完成，共修复 {fixed_count} 个玩家")
+
+        except Exception as e:
+            logger.error(f"玩家属性修复过程出错: {e}", exc_info=True)
+
+    def _calculate_correct_attributes(self, player) -> dict:
+        """
+        计算玩家的正确属性值
+
+        Args:
+            player: 玩家对象
+
+        Returns:
+            正确的属性值字典
+        """
+        # 1. 从初始属性开始（玩家创建时的属性）
+        initial_attrs = {
+            'constitution': player.constitution,
+            'spiritual_power': player.spiritual_power,
+            'comprehension': player.comprehension,
+            'luck': player.luck,
+            'root_bone': player.root_bone
+        }
+
+        # 2. 计算初始战斗属性（炼气期初期的基础���性）
+        from ..utils.constants import INITIAL_COMBAT_STATS
+
+        base_hp = INITIAL_COMBAT_STATS['max_hp']
+        base_mp = INITIAL_COMBAT_STATS['max_mp']
+        base_attack = INITIAL_COMBAT_STATS['attack']
+        base_defense = INITIAL_COMBAT_STATS['defense']
+
+        # 体质影响生命值
+        hp_bonus_from_constitution = initial_attrs['constitution'] * 50
+        base_hp += hp_bonus_from_constitution
+
+        # 灵力影响法力值和攻击力
+        mp_bonus_from_spiritual = initial_attrs['spiritual_power'] * 30
+        attack_bonus_from_spiritual = initial_attrs['spiritual_power'] * 2
+        base_mp += mp_bonus_from_spiritual
+        base_attack += attack_bonus_from_spiritual
+
+        # 根骨影响防御力
+        defense_bonus_from_root = initial_attrs['root_bone'] * 1
+        base_defense += defense_bonus_from_root
+
+        # 3. 应用灵根战斗加成
+        if player.spirit_root_type:
+            from .spirit_root import SpiritRootFactory
+            spirit_root = {
+                'type': player.spirit_root_type,
+                'quality': player.spirit_root_quality,
+                'value': player.spirit_root_value,
+                'purity': player.spirit_root_purity
+            }
+            bonuses = SpiritRootFactory.calculate_bonuses(spirit_root)
+            combat_bonus = bonuses.get('combat_bonus', {})
+
+            if 'attack' in combat_bonus:
+                base_attack = int(base_attack * (1 + combat_bonus['attack']))
+            if 'defense' in combat_bonus:
+                base_defense = int(base_defense * (1 + combat_bonus['defense']))
+            if 'max_hp' in combat_bonus:
+                bonus_hp = int(base_hp * combat_bonus['max_hp'])
+                base_hp += bonus_hp
+            if 'max_mp' in combat_bonus:
+                bonus_mp = int(base_mp * combat_bonus['max_mp'])
+                base_mp += bonus_mp
+
+        # 4. 计算所有境界提升带来的属性加成
+        from ..utils.constants import REALMS, REALM_ORDER
+        current_realm_index = REALMS[player.realm]['index']
+
+        total_hp_bonus = 0
+        total_mp_bonus = 0
+        total_attack_bonus = 0
+        total_defense_bonus = 0
+
+        # 遍历所有已经突破过的境界
+        for realm_name in REALM_ORDER:
+            realm_config = REALMS[realm_name]
+            realm_index = realm_config['index']
+
+            # 如果是当前境界之前的境界，计算完整加成
+            if realm_index < current_realm_index:
+                # 大境界突破：获得完整的境界属性加成 * 4（因为有4个小境界）
+                attribute_bonus = realm_config.get('attribute_bonus', {})
+                total_hp_bonus += attribute_bonus.get('max_hp', 0) * 4
+                total_mp_bonus += attribute_bonus.get('max_mp', 0) * 4
+                total_attack_bonus += attribute_bonus.get('attack', 0) * 4
+                total_defense_bonus += attribute_bonus.get('defense', 0) * 4
+
+            # 如果是当前境界，根据小等级计算
+            elif realm_index == current_realm_index:
+                attribute_bonus = realm_config.get('attribute_bonus', {})
+                # 小境界提升：每级25%的境界属性加成
+                level_ratio = 0.25
+                levels_passed = player.realm_level  # 当前小境界 1-4
+
+                total_hp_bonus += int(attribute_bonus.get('max_hp', 0) * level_ratio * levels_passed)
+                total_mp_bonus += int(attribute_bonus.get('max_mp', 0) * level_ratio * levels_passed)
+                total_attack_bonus += int(attribute_bonus.get('attack', 0) * level_ratio * levels_passed)
+                total_defense_bonus += int(attribute_bonus.get('defense', 0) * level_ratio * levels_passed)
+
+        # 5. 计算最��属性
+        final_max_hp = base_hp + total_hp_bonus
+        final_max_mp = base_mp + total_mp_bonus
+        final_attack = base_attack + total_attack_bonus
+        final_defense = base_defense + total_defense_bonus
+
+        return {
+            'max_hp': final_max_hp,
+            'hp': final_max_hp,  # 满血
+            'max_mp': final_max_mp,
+            'mp': final_max_mp,  # 满蓝
+            'attack': final_attack,
+            'defense': final_defense
+        }
 
     async def execute(
         self,
