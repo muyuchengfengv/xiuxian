@@ -378,3 +378,21 @@ class CombatCalculator:
         dodge_rate = max(0.0, min(0.3, dodge_rate))
 
         return random.random() < dodge_rate
+
+    @staticmethod
+    def calculate_dodge_attack(attacker: Player, defender: Player) -> bool:
+        """
+        计算闪避攻击
+
+        Args:
+            attacker: 攻击者
+            defender: 防御者
+
+        Returns:
+            是否闪避成功
+        """
+        # 使用玩家的速度属性（如果有）
+        attacker_speed = getattr(attacker, 'speed', 10)  # 默认速度
+        defender_speed = getattr(defender, 'speed', 10)
+
+        return CombatCalculator.calculate_dodge_chance(attacker_speed, defender_speed)
