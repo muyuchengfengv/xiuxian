@@ -13,7 +13,7 @@ from .core.database import DatabaseManager
 from .core.player import PlayerManager
 from .core.cultivation import CultivationSystem, RetreatError, AlreadyInRetreatError, NotInRetreatError, RetreatNotFinishedError
 from .core.breakthrough import BreakthroughSystem
-from .core.combat import CombatSystem, InvalidTargetException, SelfCombatException
+from .core.combat import CombatSystem, InvalidTargetException, SelfCombatException, CombatException
 from .core.equipment import EquipmentSystem
 from .core.ai_generator import AIGenerator, AIGenerationError, ContentNotAvailableError
 from .core.cultivation_method import CultivationMethodSystem, MethodNotFoundError, MethodNotOwnError, MethodAlreadyEquippedError, SlotOccupiedError
@@ -892,18 +892,79 @@ class XiuxianPlugin(Star):
 
             defender_name = matches[0]
 
-            # 3. 获取被@用户的ID（这里简化处理，实际应该根据平台获取用户ID）
-            # 由于无法直接从@用户名获取用户ID，这里使用简化处理
-            yield event.plain_result(
-                f"⚠️ 功能暂未完全实现\n\n"
-                f"📋 切磋信息：\n"
-                f"   攻击者：{attacker.name}\n"
-                f"   目标：@{defender_name}\n\n"
-                f"💡 请等待后续版本完善@用户解析功能"
+            # 3. 尝试找到目标玩家
+            # 先尝试通过用户名查找玩家
+            defender = None
+            defender_id = None
+
+            # 方法1: 尝试通过用户名直接查找
+            all_players = await self.player_mgr.get_all_players()
+            for player in all_players:
+                if player.name == defender_name:
+                    defender = player
+                    defender_id = player.user_id
+                    break
+
+            # 方法2: 如果用户名查找失败，尝试通过完整匹配查找
+            if defender is None:
+                # 检查是否是用户ID格式（去掉可能的@前缀）
+                potential_id = defender_name.lstrip('@')
+                try:
+                    defender = await self.player_mgr.get_player_or_error(potential_id)
+                    defender_id = potential_id
+                except PlayerNotFoundError:
+                    pass
+
+            # 方法3: 模糊匹配用户名
+            if defender is None:
+                matched_players = [
+                    player for player in all_players
+                    if defender_name.lower() in player.name.lower() or
+                       player.name.lower() in defender_name.lower()
+                ]
+
+                if len(matched_players) == 1:
+                    defender = matched_players[0]
+                    defender_id = defender.user_id
+                elif len(matched_players) > 1:
+                    yield event.plain_result(
+                        f"⚠️ 找到多个匹配的玩家：\n\n"
+                        f"{'、'.join([p.name for p in matched_players[:5]])}\n\n"
+                        f"💡 请使用更精确的玩家名"
+                    )
+                    return
+
+            # 检查是否找到目标玩家
+            if defender is None:
+                yield event.plain_result(
+                    f"⚠️ 未找到玩家 @{defender_name}\n\n"
+                    f"💡 请确认玩家名是否正确，或该玩家是否已创建角色"
+                )
+                return
+
+            # 4. 检查不能自己切磋自己
+            if attacker_id == defender_id:
+                yield event.plain_result("⚠️ 道友不能与自己切磋")
+                return
+
+            # 5. 执行切磋
+            yield event.plain_result(f"⚔️ {attacker.name} 向 {defender.name} 发起切磋...")
+
+            result = await self.combat_sys.initiate_combat(attacker_id, defender_id)
+
+            # 6. 格式化战斗结果
+            combat_text = await self.combat_sys.format_combat_log(
+                result['combat_log'], result['attacker'], result['defender']
             )
+
+            yield event.plain_result(combat_text)
 
         except PlayerNotFoundError as e:
             yield event.plain_result(str(e))
+        except SelfCombatException as e:
+            yield event.plain_result(str(e))
+        except CombatException as e:
+            yield event.plain_result(f"⚠️ 切磋失败：{str(e)}")
         except Exception as e:
             logger.error(f"切磋命令失败: {e}", exc_info=True)
             yield event.plain_result(f"切磋失败：{str(e)}")

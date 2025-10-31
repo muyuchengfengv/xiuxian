@@ -3,7 +3,7 @@
 负责玩家数据的CRUD操作
 """
 
-from typing import Optional
+from typing import Optional, List
 import random
 from datetime import datetime
 from astrbot.api import logger
@@ -308,6 +308,24 @@ class PlayerManager:
         if player is None:
             raise PlayerNotFoundError(user_id)
         return player
+
+    async def get_all_players(self) -> List[Player]:
+        """
+        获取所有玩家
+
+        Returns:
+            玩家对象列表
+        """
+        cursor = await self.db.execute("SELECT * FROM players")
+        rows = await cursor.fetchall()
+
+        players = []
+        for row in rows:
+            player_dict = dict(row)
+            player = Player.from_dict(player_dict)
+            players.append(player)
+
+        return players
 
     async def add_spirit_stone(self, user_id: str, amount: int) -> bool:
         """
