@@ -294,6 +294,8 @@ class CombatSystem:
                 'damage': 0,
                 'is_crit': False,
                 'is_dodge': True,
+                'attacker_id': attacker.user_id,
+                'defender_id': defender.user_id,
                 'attacker_hp': attacker.hp,
                 'defender_hp': defender.hp,
                 'battle_ended': False,
@@ -317,6 +319,8 @@ class CombatSystem:
                 'damage': actual_damage,
                 'is_crit': is_crit,
                 'is_dodge': False,
+                'attacker_id': attacker.user_id,
+                'defender_id': defender.user_id,
                 'attacker_hp': attacker.hp,
                 'defender_hp': max(0, defender.hp),
                 'battle_ended': defender.hp <= 0,
@@ -445,11 +449,28 @@ class CombatSystem:
                 lines.append("")
             elif log_entry['type'] in ['attack', 'dodge'] and display_count < 10:
                 lines.append(f"   {log_entry['message']}")
+
+                # 根据user_id判断哪个是原始attacker，哪个是defender
+                # log_entry中的attacker_id/defender_id是当前回合的攻击者/防御者
+                # 需要映射回原始的attacker和defender对象
+                round_attacker_id = log_entry.get('attacker_id')
+                round_defender_id = log_entry.get('defender_id')
+
+                # 获取原始attacker和defender的当前HP
+                if round_attacker_id == attacker.user_id:
+                    # 当前回合攻击者是原始attacker
+                    original_attacker_hp = log_entry['attacker_hp']
+                    original_defender_hp = log_entry['defender_hp']
+                else:
+                    # 当前回合攻击者是原始defender（已交换）
+                    original_attacker_hp = log_entry['defender_hp']
+                    original_defender_hp = log_entry['attacker_hp']
+
                 # 显示当前HP状态和HP条
-                attacker_hp_bar = self._get_hp_bar(log_entry['attacker_hp'], attacker.max_hp, 8)
-                defender_hp_bar = self._get_hp_bar(log_entry['defender_hp'], defender.max_hp, 8)
-                lines.append(f"      💚 {attacker.name}: {log_entry['attacker_hp']}/{attacker.max_hp} {attacker_hp_bar}")
-                lines.append(f"      💙 {defender.name}: {log_entry['defender_hp']}/{defender.max_hp} {defender_hp_bar}")
+                attacker_hp_bar = self._get_hp_bar(original_attacker_hp, attacker.max_hp, 8)
+                defender_hp_bar = self._get_hp_bar(original_defender_hp, defender.max_hp, 8)
+                lines.append(f"      💚 {attacker.name}: {original_attacker_hp}/{attacker.max_hp} {attacker_hp_bar}")
+                lines.append(f"      💙 {defender.name}: {original_defender_hp}/{defender.max_hp} {defender_hp_bar}")
                 display_count += 1
                 if display_count < 10 and display_count < total_rounds:
                     lines.append("")
@@ -503,9 +524,16 @@ class CombatSystem:
             winner_name = attacker.name if winner_id == attacker.user_id else defender.name
             loser_name = defender.name if winner_id == attacker.user_id else attacker.name
 
-            # 获取最终HP
-            final_attacker_hp = combat_log[-1].get('attacker_hp', 0)
-            final_defender_hp = combat_log[-1].get('defender_hp', 0)
+            # 获取最终HP - 需要根据user_id判断
+            last_log = combat_log[-1]
+            last_round_attacker_id = last_log.get('attacker_id')
+
+            if last_round_attacker_id == attacker.user_id:
+                final_attacker_hp = last_log.get('attacker_hp', 0)
+                final_defender_hp = last_log.get('defender_hp', 0)
+            else:
+                final_attacker_hp = last_log.get('defender_hp', 0)
+                final_defender_hp = last_log.get('attacker_hp', 0)
 
             lines.append("🏆 战斗结果")
             lines.append("─" * 40)
@@ -520,9 +548,18 @@ class CombatSystem:
             lines.append(f"   {defender.name}: {final_defender_hp}/{defender.max_hp} HP")
             lines.append(f"   {defender_final_bar}")
         else:
+            # 平局情况 - 也需要根据user_id判断
+            last_log = combat_log[-1]
+            last_round_attacker_id = last_log.get('attacker_id')
+
+            if last_round_attacker_id == attacker.user_id:
+                final_attacker_hp = last_log.get('attacker_hp', 0)
+                final_defender_hp = last_log.get('defender_hp', 0)
+            else:
+                final_attacker_hp = last_log.get('defender_hp', 0)
+                final_defender_hp = last_log.get('attacker_hp', 0)
+
             lines.append("🤝 战斗结果：平局")
-            final_attacker_hp = combat_log[-1].get('attacker_hp', 0)
-            final_defender_hp = combat_log[-1].get('defender_hp', 0)
             lines.append("")
             lines.append(f"💚 最终状态：")
             attacker_final_bar = self._get_hp_bar(final_attacker_hp, attacker.max_hp, 10)
