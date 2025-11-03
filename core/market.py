@@ -77,38 +77,187 @@ class MarketSystem:
         logger.info("正在初始化NPC坊市物品...")
 
         npc_items = [
-            # 基础丹药
+            # ===== 炼气期丹药 =====
             {
                 "item_type": "pill",
                 "item_id": "npc_pill_1",
                 "item_name": "回春丹",
                 "quality": "凡品",
-                "description": "恢复少量生命值的基础丹药",
+                "description": "恢复500点生命值的基础丹药",
                 "price": 50,
-                "quantity": 99,
-                "attributes": json.dumps({"hp_restore": 100})
+                "quantity": 999,
+                "attributes": json.dumps({"hp_restore": 500})
             },
             {
                 "item_type": "pill",
                 "item_id": "npc_pill_2",
-                "item_name": "聚气丹",
-                "quality": "灵品",
-                "description": "提升修为的基础丹药",
-                "price": 200,
-                "quantity": 50,
-                "attributes": json.dumps({"cultivation": 50})
+                "item_name": "回灵丹",
+                "quality": "凡品",
+                "description": "恢复300点法力值的基础丹药",
+                "price": 50,
+                "quantity": 999,
+                "attributes": json.dumps({"mp_restore": 300})
             },
             {
                 "item_type": "pill",
                 "item_id": "npc_pill_3",
+                "item_name": "聚气丹",
+                "quality": "灵品",
+                "description": "增加500修为的炼气期丹药",
+                "price": 200,
+                "quantity": 500,
+                "attributes": json.dumps({"cultivation": 500})
+            },
+            {
+                "item_type": "pill",
+                "item_id": "npc_pill_4",
+                "item_name": "固元丹",
+                "quality": "灵品",
+                "description": "增加800修为的炼气期丹药",
+                "price": 350,
+                "quantity": 300,
+                "attributes": json.dumps({"cultivation": 800})
+            },
+
+            # ===== 筑基期丹药 =====
+            {
+                "item_type": "pill",
+                "item_id": "npc_pill_5",
+                "item_name": "大还丹",
+                "quality": "灵品",
+                "description": "恢复2000点生命值的高级丹药",
+                "price": 400,
+                "quantity": 200,
+                "attributes": json.dumps({"hp_restore": 2000})
+            },
+            {
+                "item_type": "pill",
+                "item_id": "npc_pill_6",
                 "item_name": "凝神丹",
                 "quality": "灵品",
-                "description": "恢复大量生命值",
-                "price": 300,
-                "quantity": 30,
-                "attributes": json.dumps({"hp_restore": 500})
+                "description": "恢复1500点法力值",
+                "price": 350,
+                "quantity": 200,
+                "attributes": json.dumps({"mp_restore": 1500})
             },
-            # 基础材料
+            {
+                "item_type": "pill",
+                "item_id": "npc_pill_7",
+                "item_name": "培元丹",
+                "quality": "宝品",
+                "description": "增加2000修为的筑基期丹药",
+                "price": 800,
+                "quantity": 150,
+                "attributes": json.dumps({"cultivation": 2000})
+            },
+            {
+                "item_type": "pill",
+                "item_id": "npc_pill_8",
+                "item_name": "筑基丹",
+                "quality": "宝品",
+                "description": "增加3000修为，帮助筑基",
+                "price": 1500,
+                "quantity": 80,
+                "attributes": json.dumps({"cultivation": 3000})
+            },
+
+            # ===== 金丹期丹药 =====
+            {
+                "item_type": "pill",
+                "item_id": "npc_pill_9",
+                "item_name": "破障丹",
+                "quality": "宝品",
+                "description": "增加8000修为的金丹期丹药",
+                "price": 3000,
+                "quantity": 50,
+                "attributes": json.dumps({"cultivation": 8000})
+            },
+            {
+                "item_type": "pill",
+                "item_id": "npc_pill_10",
+                "item_name": "金丹",
+                "quality": "仙品",
+                "description": "增加12000修为的金丹期至宝",
+                "price": 6000,
+                "quantity": 30,
+                "attributes": json.dumps({"cultivation": 12000})
+            },
+            {
+                "item_type": "pill",
+                "item_id": "npc_pill_11",
+                "item_name": "九转金丹",
+                "quality": "仙品",
+                "description": "恢复5000点生命值和3000点法力值",
+                "price": 5000,
+                "quantity": 20,
+                "attributes": json.dumps({"hp_restore": 5000, "mp_restore": 3000})
+            },
+
+            # ===== 元婴期丹药 =====
+            {
+                "item_type": "pill",
+                "item_id": "npc_pill_12",
+                "item_name": "天元丹",
+                "quality": "仙品",
+                "description": "增加20000修为的元婴期丹药",
+                "price": 15000,
+                "quantity": 20,
+                "attributes": json.dumps({"cultivation": 20000})
+            },
+            {
+                "item_type": "pill",
+                "item_id": "npc_pill_13",
+                "item_name": "元婴丹",
+                "quality": "神品",
+                "description": "增加30000修为的元婴期至宝",
+                "price": 30000,
+                "quantity": 10,
+                "attributes": json.dumps({"cultivation": 30000})
+            },
+            {
+                "item_type": "pill",
+                "item_id": "npc_pill_14",
+                "item_name": "涅槃丹",
+                "quality": "神品",
+                "description": "完全恢复生命值和法力值",
+                "price": 25000,
+                "quantity": 5,
+                "attributes": json.dumps({"hp_restore": 99999, "mp_restore": 99999})
+            },
+
+            # ===== 属性提升丹药 =====
+            {
+                "item_type": "pill",
+                "item_id": "npc_pill_15",
+                "item_name": "洗髓丹",
+                "quality": "宝品",
+                "description": "提升体质+5",
+                "price": 2000,
+                "quantity": 30,
+                "attributes": json.dumps({"constitution": 5})
+            },
+            {
+                "item_type": "pill",
+                "item_id": "npc_pill_16",
+                "item_name": "通灵丹",
+                "quality": "宝品",
+                "description": "提升悟性+5",
+                "price": 2500,
+                "quantity": 25,
+                "attributes": json.dumps({"comprehension": 5})
+            },
+            {
+                "item_type": "pill",
+                "item_id": "npc_pill_17",
+                "item_name": "聚灵丹",
+                "quality": "宝品",
+                "description": "提升灵力+5",
+                "price": 2200,
+                "quantity": 25,
+                "attributes": json.dumps({"spiritual_power": 5})
+            },
+
+            # ===== 炼丹材料 =====
             {
                 "item_type": "material",
                 "item_id": "npc_mat_1",
@@ -116,28 +265,154 @@ class MarketSystem:
                 "quality": "凡品",
                 "description": "炼丹的基础材料",
                 "price": 20,
-                "quantity": 999,
+                "quantity": 9999,
                 "attributes": json.dumps({"type": "herb"})
             },
             {
                 "item_type": "material",
                 "item_id": "npc_mat_2",
-                "item_name": "玄铁",
+                "item_name": "聚气草",
                 "quality": "凡品",
-                "description": "炼器的基础材料",
+                "description": "炼制聚气丹的主要材料",
                 "price": 30,
-                "quantity": 999,
-                "attributes": json.dumps({"type": "metal"})
+                "quantity": 9999,
+                "attributes": json.dumps({"type": "herb"})
             },
             {
                 "item_type": "material",
                 "item_id": "npc_mat_3",
+                "item_name": "固元草",
+                "quality": "凡品",
+                "description": "炼制固元丹的主要材料",
+                "price": 40,
+                "quantity": 9999,
+                "attributes": json.dumps({"type": "herb"})
+            },
+            {
+                "item_type": "material",
+                "item_id": "npc_mat_4",
+                "item_name": "朱砂",
+                "quality": "凡品",
+                "description": "炼丹的辅助材料",
+                "price": 25,
+                "quantity": 9999,
+                "attributes": json.dumps({"type": "mineral"})
+            },
+            {
+                "item_type": "material",
+                "item_id": "npc_mat_5",
+                "item_name": "灵液",
+                "quality": "灵品",
+                "description": "炼丹的精华材料",
+                "price": 80,
+                "quantity": 5000,
+                "attributes": json.dumps({"type": "liquid"})
+            },
+            {
+                "item_type": "material",
+                "item_id": "npc_mat_6",
+                "item_name": "百年灵芝",
+                "quality": "灵品",
+                "description": "珍贵的药材",
+                "price": 300,
+                "quantity": 500,
+                "attributes": json.dumps({"type": "herb"})
+            },
+            {
+                "item_type": "material",
+                "item_id": "npc_mat_7",
+                "item_name": "兽骨",
+                "quality": "凡品",
+                "description": "妖兽骨骼，炼丹材料",
+                "price": 50,
+                "quantity": 2000,
+                "attributes": json.dumps({"type": "bone"})
+            },
+
+            # ===== 炼器材料 =====
+            {
+                "item_type": "material",
+                "item_id": "npc_mat_8",
+                "item_name": "玄铁",
+                "quality": "凡品",
+                "description": "炼器的基础材料",
+                "price": 30,
+                "quantity": 9999,
+                "attributes": json.dumps({"type": "metal"})
+            },
+            {
+                "item_type": "material",
+                "item_id": "npc_mat_9",
+                "item_name": "精铁",
+                "quality": "灵品",
+                "description": "炼器的优质材料",
+                "price": 100,
+                "quantity": 5000,
+                "attributes": json.dumps({"type": "metal"})
+            },
+            {
+                "item_type": "material",
+                "item_id": "npc_mat_10",
+                "item_name": "寒铁",
+                "quality": "宝品",
+                "description": "珍贵的炼器材料",
+                "price": 500,
+                "quantity": 500,
+                "attributes": json.dumps({"type": "metal"})
+            },
+
+            # ===== 其他材料 =====
+            {
+                "item_type": "material",
+                "item_id": "npc_mat_11",
                 "item_name": "灵石碎片",
                 "quality": "灵品",
                 "description": "蕴含灵力的石头碎片",
                 "price": 100,
-                "quantity": 200,
+                "quantity": 2000,
                 "attributes": json.dumps({"type": "spirit"})
+            },
+            {
+                "item_type": "material",
+                "item_id": "npc_mat_12",
+                "item_name": "符纸",
+                "quality": "凡品",
+                "description": "绘制符箓的基础材料",
+                "price": 10,
+                "quantity": 9999,
+                "attributes": json.dumps({"type": "paper"})
+            },
+            {
+                "item_type": "material",
+                "item_id": "npc_mat_13",
+                "item_name": "朱砂墨",
+                "quality": "凡品",
+                "description": "绘制符箓的墨汁",
+                "price": 20,
+                "quantity": 9999,
+                "attributes": json.dumps({"type": "ink"})
+            },
+
+            # ===== 消耗品 =====
+            {
+                "item_type": "consumable",
+                "item_id": "npc_cons_1",
+                "item_name": "传送符",
+                "quality": "灵品",
+                "description": "可以传送到随机地点",
+                "price": 500,
+                "quantity": 100,
+                "attributes": json.dumps({"type": "teleport", "target_location": "随机地点"})
+            },
+            {
+                "item_type": "consumable",
+                "item_id": "npc_cons_2",
+                "item_name": "护体符",
+                "quality": "宝品",
+                "description": "获得1000点护盾，持续3回合",
+                "price": 800,
+                "quantity": 50,
+                "attributes": json.dumps({"type": "defense", "shield": 1000, "duration": 3})
             },
         ]
 
@@ -421,7 +696,23 @@ class MarketSystem:
                 )
             elif item_type in ["pill", "material"]:
                 # 添加物品到买家背包
-                await self.item_mgr.add_item(buyer_id, item_id, quantity)
+                # 解析物品属性（effect）
+                item_effect = None
+                if listing.get('attributes'):
+                    try:
+                        item_effect = json.loads(listing['attributes'])
+                    except:
+                        item_effect = None
+
+                await self.item_mgr.add_item(
+                    user_id=buyer_id,
+                    item_name=listing['item_name'],
+                    item_type=item_type,
+                    quality=listing.get('quality', '凡品'),
+                    quantity=quantity,
+                    description=listing.get('description', ''),
+                    effect=item_effect
+                )
 
             # 更新商品状态
             await self.db.execute(
@@ -498,7 +789,23 @@ class MarketSystem:
 
         if item_type in ["pill", "material"]:
             # 退还丹药或材料
-            await self.item_mgr.add_item(user_id, item_id, quantity)
+            # 解析物品属性（effect）
+            item_effect = None
+            if listing.get('attributes'):
+                try:
+                    item_effect = json.loads(listing['attributes'])
+                except:
+                    item_effect = None
+
+            await self.item_mgr.add_item(
+                user_id=user_id,
+                item_name=listing['item_name'],
+                item_type=item_type,
+                quality=listing.get('quality', '凡品'),
+                quantity=quantity,
+                description=listing.get('description', ''),
+                effect=item_effect
+            )
 
         # 更新商品状态
         await self.db.execute(

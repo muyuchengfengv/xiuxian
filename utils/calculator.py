@@ -240,15 +240,15 @@ class CombatCalculator:
         Returns:
             (成功率, 影响因素字典)
         """
-        # 基础成功率
-        base_rate = BASE_BREAKTHROUGH_RATE
+        # 基础成功率 - 提高到90%，使低境界更容易突破
+        base_rate = 0.90
 
         # 获取当前境界配置
         realm_config = REALMS.get(player.realm, REALMS["炼气期"])
         realm_index = realm_config["index"]
 
-        # 1. 境界等级影响 - 等级越高成功率越低
-        level_penalty = (player.realm_level - 1) * 0.05  # 每级降低5%
+        # 1. 小境界等级影响 - 等级越高成功率略微降低
+        level_penalty = (player.realm_level - 1) * 0.03  # 每级降低3%（从5%降低到3%）
 
         # 2. 灵根品质加成
         breakthrough_bonus = 0.0
@@ -256,8 +256,23 @@ class CombatCalculator:
             quality_config = SPIRIT_ROOT_QUALITIES.get(player.spirit_root_quality, {})
             breakthrough_bonus = quality_config.get('breakthrough_modifier', 0)
 
-        # 3. 境界加成 - 高境界基础成功率更低
-        realm_penalty = realm_index * 0.1  # 每个大境界降低10%
+        # 3. 境界难度惩罚 - 调整为元婴之后才显著降低成功率
+        # 炼气期(0)、筑基期(1)、金丹期(2): 不惩罚，保持80%-90%
+        # 元婴期(3): 降低20%，保持61%-70%
+        # 化神期(4)及以后: 全部低于50%
+        realm_penalty = 0.0
+        if realm_index <= 2:
+            # 低境界（炼气期、筑基期、金丹期）不惩罚
+            realm_penalty = 0.0
+        elif realm_index == 3:
+            # 元婴期开始降低
+            realm_penalty = 0.20
+        elif realm_index == 4:
+            # 化神期：确保初期就低于50%
+            realm_penalty = 0.42
+        else:
+            # 炼虚期及以后：逐渐增加惩罚
+            realm_penalty = 0.42 + (realm_index - 4) * 0.10
 
         # 4. 灵根纯度影响
         purity_bonus = 0
@@ -267,10 +282,6 @@ class CombatCalculator:
             purity_bonus = 0.10  # 纯度80%以上+10%
         elif player.spirit_root_purity >= 70:
             purity_bonus = 0.05  # 纯度70%以上+5%
-
-        # 5. 境界等级修正（防止过低等级突破）
-        if player.realm_level < 3 and realm_index >= 3:  # 筑基期以下3级内
-            level_penalty *= 1.5  # 额外降低成功率
 
         # 计算最终成功率
         final_rate = base_rate - level_penalty - realm_penalty + breakthrough_bonus + purity_bonus

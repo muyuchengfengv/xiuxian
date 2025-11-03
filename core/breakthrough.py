@@ -85,7 +85,7 @@ class BreakthroughSystem:
         new_realm = next_realm_info['name']
         target_realm = next_realm_info['realm']
 
-        # 4. 检查是否需要渡劫（只在小等级为9，即突破到新大境界时检查）
+        # 4. 检查是否需要渡劫（只在小等级为1，即突破到新大境界时检查）
         requires_tribulation = False
         if self.tribulation_sys and not skip_tribulation and next_realm_info['level'] == 1:
             requires_tribulation = await self.tribulation_sys.check_tribulation_required(target_realm)
@@ -119,10 +119,28 @@ class BreakthroughSystem:
                         'tribulation': active_tribulation
                     }
 
-        # 5. 计算突破成功率
+        # 5. 大境界突破（渡劫成功）直接成功，不需要计算突破概率
+        if skip_tribulation:
+            # 渡劫成功后的突破，直接成功
+            await self._perform_breakthrough(player, next_realm_info)
+
+            result = {
+                'success': True,
+                'message': f"🎉 渡劫成功！从 {old_realm} 突破至 {new_realm}！",
+                'old_realm': old_realm,
+                'new_realm': new_realm,
+                'breakthrough_rate': 1.0,  # 渡劫成功后100%突破
+                'rate_factors': {'tribulation_success': '渡劫成功，直接突破'},
+                'requires_tribulation': False
+            }
+
+            logger.info(f"玩家 {player.name} 渡劫成功突破: {old_realm} -> {new_realm}")
+            return result
+
+        # 6. 小境界突破：计算突破成功率
         success_rate, rate_factors = CombatCalculator.calculate_breakthrough_rate(player)
 
-        # 6. 执行突破判定
+        # 7. 执行突破判定
         is_success = random.random() < success_rate
 
         if is_success:
