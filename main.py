@@ -2917,8 +2917,17 @@ class XiuxianPlugin(Star):
 • 建筑升级需要消耗宗门灵石
 • 贡献度可用于学习宗门功法
 
+🐾 宗门灵宠福利：
+/领取灵宠 - 加入宗门后可领取初始灵宠（仅一次）
+/我的灵宠 - 查看已拥有的灵宠
+/激活灵宠 [编号] - 激活灵宠获得加成效果
+/灵宠秘境 - 探索秘境捕获野生灵宠
+/灵宠详情 [编号] - 查看灵宠详细属性
+
 💡 提示：
 • 加入宗门可获得建筑加成
+• 加入宗门后可领取一只初始灵宠
+• 激活灵宠可获得修炼/突破等加成
 • 积极捐献可提升个人地位
 • 完成宗门任务获得丰厚奖励
 • 宗门越强，成员收益越高
@@ -3447,6 +3456,7 @@ class XiuxianPlugin(Star):
 物品: /使用[物品名]
 坊市: /坊市 /上架[类型][#][价][量] /购买[#] /下架[#] /我的上架
 宗门: /宗门列表 /加入宗门[名] /宗门信息 /宗门帮助 (详细命令)
+灵宠: /领取灵宠[#] /我的灵宠 /激活灵宠[#] /灵宠秘境 /灵宠详情[#]
 天劫: /渡劫 /天劫信息 /天劫历史 /天劫统计
 功法: /功法 /功法装备[#][槽] /已装备功法 /功法详情[#] /获得功法[类型]
 AI: /AI生成[类型] /AI历史 /AI帮助
@@ -4192,12 +4202,31 @@ AI: /AI生成[类型] /AI历史 /AI帮助
                 ]
 
                 for i, pet in enumerate(starters, 1):
-                    lines.append(
+                    # 解析灵宠效果
+                    import json
+                    base_attrs = json.loads(pet.base_attributes)
+                    effects = []
+                    if 'cultivation_speed_bonus' in base_attrs:
+                        effects.append(f"修炼速度+{base_attrs['cultivation_speed_bonus']*100:.0f}%")
+                    if 'breakthrough_bonus' in base_attrs:
+                        effects.append(f"突破率+{base_attrs['breakthrough_bonus']*100:.0f}%")
+                    if 'luck_bonus' in base_attrs:
+                        effects.append(f"幸运+{base_attrs['luck_bonus']}")
+                    if 'attack_bonus' in base_attrs:
+                        effects.append(f"攻击+{base_attrs['attack_bonus']*100:.0f}%")
+                    if 'defense_bonus' in base_attrs:
+                        effects.append(f"防御+{base_attrs['defense_bonus']*100:.0f}%")
+
+                    pet_info = (
                         f"{i}. {pet.get_rarity_color()}{pet.name}\n"
                         f"   类型：{pet.pet_type}\n"
                         f"   稀有度：{pet.rarity}\n"
-                        f"   {pet.description}\n"
                     )
+                    if effects:
+                        pet_info += f"   效果：{', '.join(effects)}\n"
+                    pet_info += f"   {pet.description}\n"
+
+                    lines.append(pet_info)
 
                 lines.extend([
                     "─" * 40,
@@ -4213,13 +4242,32 @@ AI: /AI生成[类型] /AI历史 /AI帮助
                 pet_index = int(parts[1])
                 player_pet = await self.pet_sys.claim_starter_pet(user_id, pet_index)
 
+                # 解析灵宠效果
+                import json
+                effect_lines = []
+                if player_pet.pet_template and player_pet.pet_template.base_attributes:
+                    base_attrs = json.loads(player_pet.pet_template.base_attributes)
+                    if 'cultivation_speed_bonus' in base_attrs:
+                        effect_lines.append(f"   • 修炼速度 +{base_attrs['cultivation_speed_bonus']*100:.0f}%")
+                    if 'breakthrough_bonus' in base_attrs:
+                        effect_lines.append(f"   • 突破成功率 +{base_attrs['breakthrough_bonus']*100:.0f}%")
+                    if 'luck_bonus' in base_attrs:
+                        effect_lines.append(f"   • 幸运 +{base_attrs['luck_bonus']}")
+                    if 'attack_bonus' in base_attrs:
+                        effect_lines.append(f"   • 攻击力 +{base_attrs['attack_bonus']*100:.0f}%")
+                    if 'defense_bonus' in base_attrs:
+                        effect_lines.append(f"   • 防御力 +{base_attrs['defense_bonus']*100:.0f}%")
+
+                effect_text = "\n".join(effect_lines) if effect_lines else ""
+
                 # 构建成功消息
                 yield event.plain_result(
                     f"🎉 恭喜您领取了初始灵宠！\n\n"
                     f"🐾 {player_pet.get_display_name()}\n"
                     f"📝 获取途径：宗门福利\n\n"
-                    f"💡 使用 /我的灵宠 查看所有灵宠\n"
-                    f"   使用 /激活灵宠 1 让灵宠出战"
+                    f"✨ 基础效果：\n{effect_text}\n\n"
+                    f"💡 使用 /激活灵宠 1 让灵宠出战获得加成\n"
+                    f"   使用 /我的灵宠 查看所有灵宠"
                 )
             except ValueError:
                 yield event.plain_result("⚠️ 请输入有效的编号！")
@@ -4260,20 +4308,44 @@ AI: /AI生成[类型] /AI历史 /AI帮助
                 intimacy_level = pet.get_intimacy_level()
                 next_exp = pet.get_next_level_exp()
 
-                lines.append(
-                    f"{i}. {pet.get_display_name()} {status}\n"
+                # 解析灵宠加成效果
+                import json
+                effect_text = ""
+                if pet.pet_template and pet.pet_template.base_attributes:
+                    base_attrs = json.loads(pet.pet_template.base_attributes)
+                    effects = []
+                    if 'cultivation_speed_bonus' in base_attrs:
+                        effects.append(f"修炼速度+{base_attrs['cultivation_speed_bonus']*100:.0f}%")
+                    if 'breakthrough_bonus' in base_attrs:
+                        effects.append(f"突破率+{base_attrs['breakthrough_bonus']*100:.0f}%")
+                    if 'luck_bonus' in base_attrs:
+                        effects.append(f"幸运+{base_attrs['luck_bonus']}")
+                    if 'attack_bonus' in base_attrs:
+                        effects.append(f"攻击+{base_attrs['attack_bonus']*100:.0f}%")
+                    if 'defense_bonus' in base_attrs:
+                        effects.append(f"防御+{base_attrs['defense_bonus']*100:.0f}%")
+                    if effects:
+                        effect_text = f"   效果：{', '.join(effects)}\n"
+
+                pet_info = f"{i}. {pet.get_display_name()} {status}\n"
+                if effect_text:
+                    pet_info += f"{effect_text}"
+                pet_info += (
                     f"   经验：{pet.experience}/{next_exp}\n"
                     f"   亲密度：{pet.intimacy}/100 ({intimacy_level})\n"
                     f"   参战次数：{pet.battle_count}\n"
                     f"   获取途径：{pet.acquired_from}\n"
                 )
+                lines.append(pet_info)
 
             lines.extend([
                 "",
                 f"📊 共 {len(pets)} 只灵宠",
                 "",
                 "💡 使用 /激活灵宠 [编号] 让灵宠出战",
-                "   使用 /灵宠详情 [编号] 查看详细信息"
+                "   使用 /灵宠详情 [编号] 查看详细信息",
+                "",
+                "📈 提示：灵宠等级和亲密度会增强加成效果"
             ])
 
             yield event.plain_result("\n".join(lines))
@@ -4306,8 +4378,22 @@ AI: /AI生成[类型] /AI历史 /AI帮助
 
             try:
                 pet_index = int(parts[1]) - 1
-                result = await self.pet_sys.activate_pet(user_id, pet_index)
-                yield event.plain_result(result['message'])
+
+                # 获取玩家的灵宠列表
+                pets = await self.pet_sys.get_player_pets(user_id)
+
+                if pet_index < 0 or pet_index >= len(pets):
+                    yield event.plain_result("⚠️ 无效的灵宠编号！")
+                    return
+
+                # 使用玩家灵宠的数据库ID激活
+                selected_pet = pets[pet_index]
+                activated_pet = await self.pet_sys.activate_pet(user_id, selected_pet.id)
+
+                yield event.plain_result(
+                    f"✅ 已激活灵宠：{activated_pet.get_display_name()}\n\n"
+                    f"💡 灵宠加成将在修炼、突破等操作中生效"
+                )
             except ValueError:
                 yield event.plain_result("⚠️ 请输入有效的编号！")
 
@@ -4380,6 +4466,11 @@ AI: /AI生成[类型] /AI历史 /AI帮助
                 import json
                 base_attrs = json.loads(template.base_attributes)
 
+                # 计算当前等级和亲密度下的实际加成
+                level_multiplier = 1.0 + (pet.level - 1) * 0.02
+                intimacy_multiplier = 1.0 + (pet.intimacy / 100) * 0.3
+                total_multiplier = level_multiplier * intimacy_multiplier
+
                 lines = [
                     f"🐾 {pet.get_display_name()}",
                     "─" * 40,
@@ -4400,11 +4491,47 @@ AI: /AI生成[类型] /AI历史 /AI帮助
                     f"📅 获取时间：{pet.acquired_at[:10]}",
                     f"📍 获取途径：{pet.acquired_from}",
                     "",
-                    f"✨ 基础属性：",
+                    f"✨ 基础加成效果：",
                 ]
 
-                for attr, value in base_attrs.items():
-                    lines.append(f"   {attr}：{value}")
+                # 显示人类可读的加成效果
+                base_effects = []
+                actual_effects = []
+                if 'cultivation_speed_bonus' in base_attrs:
+                    base_val = base_attrs['cultivation_speed_bonus']
+                    actual_val = base_val * total_multiplier
+                    base_effects.append(f"   • 修炼速度：+{base_val*100:.0f}%")
+                    actual_effects.append(f"   • 修炼速度：+{actual_val*100:.1f}%")
+                if 'breakthrough_bonus' in base_attrs:
+                    base_val = base_attrs['breakthrough_bonus']
+                    actual_val = base_val * total_multiplier
+                    base_effects.append(f"   • 突破成功率：+{base_val*100:.0f}%")
+                    actual_effects.append(f"   • 突破成功率：+{actual_val*100:.1f}%")
+                if 'luck_bonus' in base_attrs:
+                    base_val = base_attrs['luck_bonus']
+                    actual_val = base_val * total_multiplier
+                    base_effects.append(f"   • 幸运：+{base_val}")
+                    actual_effects.append(f"   • 幸运：+{actual_val:.1f}")
+                if 'attack_bonus' in base_attrs:
+                    base_val = base_attrs['attack_bonus']
+                    actual_val = base_val * total_multiplier
+                    base_effects.append(f"   • 攻击力：+{base_val*100:.0f}%")
+                    actual_effects.append(f"   • 攻击力：+{actual_val*100:.1f}%")
+                if 'defense_bonus' in base_attrs:
+                    base_val = base_attrs['defense_bonus']
+                    actual_val = base_val * total_multiplier
+                    base_effects.append(f"   • 防御力：+{base_val*100:.0f}%")
+                    actual_effects.append(f"   • 防御力：+{actual_val*100:.1f}%")
+
+                lines.extend(base_effects)
+
+                if actual_effects:
+                    lines.extend([
+                        "",
+                        f"🔥 当前实际加成（等级{pet.level}，亲密度{pet.intimacy}）：",
+                    ])
+                    lines.extend(actual_effects)
+                    lines.append(f"   💡 加成倍率：{total_multiplier:.2f}x")
 
                 lines.extend([
                     "",

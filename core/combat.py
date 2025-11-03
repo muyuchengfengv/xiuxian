@@ -290,7 +290,7 @@ class CombatSystem:
             result = {
                 'round': round_num,
                 'type': 'dodge',
-                'message': f"💨 第{round_num}回合：{defender.name} 闪避了 {attacker.name} 的攻击！",
+                'message': f"💨 回合{round_num}：{defender.name} 闪避了 {attacker.name} 的攻击！",
                 'damage': 0,
                 'is_crit': False,
                 'is_dodge': True,
@@ -305,8 +305,10 @@ class CombatSystem:
             defender.hp -= actual_damage
 
             # 构建消息
-            crit_text = "💥 暴击！" if is_crit else ""
-            damage_text = f"第{round_num}回合：{attacker.name} 对 {defender.name} 造成 {actual_damage} 点伤害{crit_text}"
+            if is_crit:
+                damage_text = f"💥 回合{round_num}：{attacker.name} 暴击 {defender.name}，造成 【{actual_damage}】 点伤害！"
+            else:
+                damage_text = f"⚔️ 回合{round_num}：{attacker.name} 攻击 {defender.name}，造成 【{actual_damage}】 点伤害"
 
             result = {
                 'round': round_num,
@@ -341,6 +343,28 @@ class CombatSystem:
         else:
             return None
 
+    def _get_hp_bar(self, current_hp: int, max_hp: int, length: int = 10) -> str:
+        """
+        生成HP百分比条
+
+        Args:
+            current_hp: 当前HP
+            max_hp: 最大HP
+            length: 条的长度
+
+        Returns:
+            HP条字符串
+        """
+        if max_hp <= 0:
+            return "█" * length
+
+        percentage = current_hp / max_hp
+        filled = int(percentage * length)
+        empty = length - filled
+
+        bar = "█" * filled + "░" * empty
+        return f"[{bar}] {percentage*100:.0f}%"
+
     async def format_combat_log(self, combat_log: List[Dict], attacker: Player, defender: Player) -> str:
         """
         格式化战斗日志为可读文本
@@ -358,56 +382,155 @@ class CombatSystem:
 
         lines = []
 
-        # 1. 战斗标题
+        # 1. 战斗标题和基础信息
         lines.append("⚔️ 切磋对战")
         lines.append("─" * 40)
 
-        # 2. 参与者信息
+        # 计算战力
+        attacker_power = CombatCalculator.calculate_power(attacker)
+        defender_power = CombatCalculator.calculate_power(defender)
+
+        # 2. 参与者信息（包含战力）
         lines.append(f"👥 对战双方：")
-        lines.append(f"   🔴 {attacker.name} ({attacker.realm})")
-        lines.append(f"   🔵 {defender.name} ({defender.realm})")
+        lines.append(f"   🔴 {attacker.name} ({attacker.realm}) - 战力: {attacker_power}")
+        lines.append(f"   🔵 {defender.name} ({defender.realm}) - 战力: {defender_power}")
         lines.append("")
 
-        # 3. 战斗过程
+        # 3. 统计战斗数据
+        total_rounds = len([log for log in combat_log if log['type'] in ['attack', 'dodge']])
+        attacker_stats = {
+            'total_damage': 0,
+            'crit_count': 0,
+            'dodge_count': 0,
+            'attack_count': 0
+        }
+        defender_stats = {
+            'total_damage': 0,
+            'crit_count': 0,
+            'dodge_count': 0,
+            'attack_count': 0
+        }
+
+        # 统计每个玩家的数据
+        for i, log_entry in enumerate(combat_log):
+            if log_entry['type'] not in ['attack', 'dodge']:
+                continue
+
+            # 判断当前回合的攻击者（奇数回合是attacker，偶数回合是defender）
+            round_num = log_entry.get('round', 0)
+            is_attacker_turn = (round_num % 2 == 1)
+            current_stats = attacker_stats if is_attacker_turn else defender_stats
+
+            if log_entry['type'] == 'attack':
+                current_stats['attack_count'] += 1
+                current_stats['total_damage'] += log_entry.get('damage', 0)
+                if log_entry.get('is_crit'):
+                    current_stats['crit_count'] += 1
+            elif log_entry['type'] == 'dodge':
+                # 对方闪避了攻击
+                current_stats['attack_count'] += 1
+                opponent_stats = defender_stats if is_attacker_turn else attacker_stats
+                opponent_stats['dodge_count'] += 1
+
+        # 4. 显示前10回合的战斗过程
+        lines.append("📜 战斗过程（前10回合）：")
+        lines.append("")
+
+        display_count = 0
         for log_entry in combat_log:
             if log_entry['type'] == 'start':
                 lines.append(f"📢 {log_entry['message']}")
+                lines.append(f"   💚 {attacker.name}: {log_entry['attacker_hp']}/{attacker.max_hp} HP")
+                lines.append(f"   💙 {defender.name}: {log_entry['defender_hp']}/{defender.max_hp} HP")
                 lines.append("")
-            elif log_entry['type'] in ['attack', 'dodge']:
+            elif log_entry['type'] in ['attack', 'dodge'] and display_count < 10:
                 lines.append(f"   {log_entry['message']}")
-
-                # 显示状态
-                lines.append(f"   📊 {attacker.name} HP: {log_entry['attacker_hp']}/{attacker.max_hp} | "
-                           f"{defender.name} HP: {log_entry['defender_hp']}/{defender.max_hp}")
-                lines.append("")
+                # 显示当前HP状态和HP条
+                attacker_hp_bar = self._get_hp_bar(log_entry['attacker_hp'], attacker.max_hp, 8)
+                defender_hp_bar = self._get_hp_bar(log_entry['defender_hp'], defender.max_hp, 8)
+                lines.append(f"      💚 {attacker.name}: {log_entry['attacker_hp']}/{attacker.max_hp} {attacker_hp_bar}")
+                lines.append(f"      💙 {defender.name}: {log_entry['defender_hp']}/{defender.max_hp} {defender_hp_bar}")
+                display_count += 1
+                if display_count < 10 and display_count < total_rounds:
+                    lines.append("")
             elif log_entry['type'] == 'timeout':
+                lines.append("")
                 lines.append(f"⏰ {log_entry['message']}")
-                lines.append("")
             elif log_entry['type'] == 'end':
-                lines.append(f"🏁 {log_entry['message']}")
                 lines.append("")
+                lines.append(f"🏁 {log_entry['message']}")
 
-        # 4. 战斗结果
+        # 如果战斗超过10回合，显示省略提示
+        if total_rounds > 10:
+            lines.append("")
+            lines.append(f"   ... 省略 {total_rounds - 10} 回合 ...")
+
+        lines.append("")
+
+        # 5. 战斗统计
+        lines.append("📊 战斗统计")
+        lines.append("─" * 40)
+        lines.append(f"🔴 {attacker.name}：")
+        lines.append(f"   总伤害: {attacker_stats['total_damage']}")
+        lines.append(f"   攻击次数: {attacker_stats['attack_count']}")
+        lines.append(f"   暴击次数: {attacker_stats['crit_count']}")
+        if attacker_stats['attack_count'] > 0:
+            crit_rate = (attacker_stats['crit_count'] / attacker_stats['attack_count']) * 100
+            avg_damage = attacker_stats['total_damage'] / attacker_stats['attack_count']
+            lines.append(f"   暴击率: {crit_rate:.1f}%")
+            lines.append(f"   平均伤害: {avg_damage:.1f}")
+        lines.append(f"   闪避次数: {attacker_stats['dodge_count']}")
+
+        lines.append("")
+        lines.append(f"🔵 {defender.name}：")
+        lines.append(f"   总伤害: {defender_stats['total_damage']}")
+        lines.append(f"   攻击次数: {defender_stats['attack_count']}")
+        lines.append(f"   暴击次数: {defender_stats['crit_count']}")
+        if defender_stats['attack_count'] > 0:
+            crit_rate = (defender_stats['crit_count'] / defender_stats['attack_count']) * 100
+            avg_damage = defender_stats['total_damage'] / defender_stats['attack_count']
+            lines.append(f"   暴击率: {crit_rate:.1f}%")
+            lines.append(f"   平均伤害: {avg_damage:.1f}")
+        lines.append(f"   闪避次数: {defender_stats['dodge_count']}")
+
+        lines.append("")
+        lines.append(f"⏱️ 总回合数: {total_rounds}")
+
+        # 6. 战斗结果
+        lines.append("")
         if combat_log and combat_log[-1].get('winner'):
             winner_id = combat_log[-1]['winner']
             winner_name = attacker.name if winner_id == attacker.user_id else defender.name
             loser_name = defender.name if winner_id == attacker.user_id else attacker.name
 
+            # 获取最终HP
+            final_attacker_hp = combat_log[-1].get('attacker_hp', 0)
+            final_defender_hp = combat_log[-1].get('defender_hp', 0)
+
             lines.append("🏆 战斗结果")
             lines.append("─" * 40)
             lines.append(f"🥇 胜者：{winner_name}")
             lines.append(f"🥈 败者：{loser_name}")
-
-            # 计算战力对比
-            attacker_power = CombatCalculator.calculate_power(attacker)
-            defender_power = CombatCalculator.calculate_power(defender)
-
             lines.append("")
-            lines.append("📊 战力对比")
-            lines.append(f"   {attacker.name}: {attacker_power}")
-            lines.append(f"   {defender.name}: {defender_power}")
+            lines.append(f"💚 最终状态：")
+            attacker_final_bar = self._get_hp_bar(final_attacker_hp, attacker.max_hp, 10)
+            defender_final_bar = self._get_hp_bar(final_defender_hp, defender.max_hp, 10)
+            lines.append(f"   {attacker.name}: {final_attacker_hp}/{attacker.max_hp} HP")
+            lines.append(f"   {attacker_final_bar}")
+            lines.append(f"   {defender.name}: {final_defender_hp}/{defender.max_hp} HP")
+            lines.append(f"   {defender_final_bar}")
         else:
             lines.append("🤝 战斗结果：平局")
+            final_attacker_hp = combat_log[-1].get('attacker_hp', 0)
+            final_defender_hp = combat_log[-1].get('defender_hp', 0)
+            lines.append("")
+            lines.append(f"💚 最终状态：")
+            attacker_final_bar = self._get_hp_bar(final_attacker_hp, attacker.max_hp, 10)
+            defender_final_bar = self._get_hp_bar(final_defender_hp, defender.max_hp, 10)
+            lines.append(f"   {attacker.name}: {final_attacker_hp}/{attacker.max_hp} HP")
+            lines.append(f"   {attacker_final_bar}")
+            lines.append(f"   {defender.name}: {final_defender_hp}/{defender.max_hp} HP")
+            lines.append(f"   {defender_final_bar}")
 
         return "\n".join(lines)
 

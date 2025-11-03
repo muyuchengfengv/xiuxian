@@ -117,17 +117,35 @@ class CombatCalculator:
         # 3. 应用技能倍率
         base_damage *= skill_multiplier
 
-        # 4. 境界压制
+        # 4. 境界压制（更强的压制力）
         attacker_realm_index = REALMS.get(attacker.realm, REALMS["炼气期"])["index"]
         defender_realm_index = REALMS.get(defender.realm, REALMS["炼气期"])["index"]
 
         realm_diff = attacker_realm_index - defender_realm_index
         if realm_diff > 0:
-            # 攻击者境界高，伤害增加
-            base_damage *= (1 + realm_diff * 0.1)  # 每高一个境界+10%伤害
+            # 攻击者境界高，伤害大幅增加
+            # 境界差1：+20% 伤害
+            # 境界差2：+45% 伤害
+            # 境界差3+：+75%起，每多一级再+30%
+            if realm_diff == 1:
+                base_damage *= 1.2
+            elif realm_diff == 2:
+                base_damage *= 1.45
+            else:
+                base_damage *= (1.75 + (realm_diff - 3) * 0.3)
         elif realm_diff < 0:
-            # 攻击者境界低，伤害减少
-            base_damage *= (1 + realm_diff * 0.05)  # 每低一个境界-5%伤害
+            # 攻击者境界低，伤害大幅减少
+            # 境界差-1：-30% 伤害
+            # 境界差-2：-50% 伤害
+            # 境界差-3+：-70%起，每低一级再-10%（最低保留10%伤害）
+            realm_diff_abs = abs(realm_diff)
+            if realm_diff_abs == 1:
+                base_damage *= 0.7
+            elif realm_diff_abs == 2:
+                base_damage *= 0.5
+            else:
+                multiplier = max(0.1, 0.3 - (realm_diff_abs - 3) * 0.1)
+                base_damage *= multiplier
 
         # 5. 随机波动 (90%-110%)
         damage = base_damage * random.uniform(0.9, 1.1)
