@@ -54,6 +54,7 @@ class CultivationSystem:
         self.player_mgr = player_mgr
         self.cooldown_seconds = DEFAULT_CULTIVATION_COOLDOWN  # 默认1小时
         self.sect_sys = None  # 宗门系统（可选）
+        self.pet_sys = None  # 灵宠系统（可选）
 
     def set_cooldown(self, seconds: int):
         """
@@ -73,6 +74,15 @@ class CultivationSystem:
             sect_sys: 宗门系统实例
         """
         self.sect_sys = sect_sys
+
+    def set_pet_system(self, pet_sys):
+        """
+        设置灵宠系统（用于加成计算）
+
+        Args:
+            pet_sys: 灵宠系统实例
+        """
+        self.pet_sys = pet_sys
 
     async def cultivate(self, user_id: str) -> Dict:
         """
@@ -116,6 +126,19 @@ class CultivationSystem:
                 # 如果宗门加成失败，记录日志但不影响修炼
                 logger.warning(f"应用宗门加成失败: {e}")
 
+        # 3.6 应用灵宠加成
+        pet_bonus_rate = 0.0
+        if self.pet_sys:
+            try:
+                pet_bonuses = await self.pet_sys.get_active_pet_bonuses(user_id)
+                pet_bonus_rate = pet_bonuses.get('cultivation_speed_bonus', 0.0)
+                if pet_bonus_rate > 0:
+                    cultivation_gained = cultivation_gained * (1 + pet_bonus_rate)
+                    logger.debug(f"应用灵宠加成: +{pet_bonus_rate*100:.1f}%")
+            except Exception as e:
+                # 如果灵宠加成失败，记录日志但不影响修炼
+                logger.warning(f"应用灵宠加成失败: {e}")
+
         # 4. 更新玩家数据
         player.cultivation += int(cultivation_gained)
         player.last_cultivation = datetime.now()
@@ -128,13 +151,14 @@ class CultivationSystem:
 
         logger.info(
             f"玩家 {player.name} 修炼完成: "
-            f"获得修为 {int(cultivation_gained)} (宗门加成: {sect_bonus_rate*100:.0f}%), "
+            f"获得修为 {int(cultivation_gained)} (宗门加成: {sect_bonus_rate*100:.0f}%, 灵宠加成: {pet_bonus_rate*100:.0f}%), "
             f"总修为 {player.cultivation}"
         )
 
         return {
             'cultivation_gained': int(cultivation_gained),
             'sect_bonus_rate': sect_bonus_rate,
+            'pet_bonus_rate': pet_bonus_rate,
             'total_cultivation': player.cultivation,
             'can_breakthrough': can_breakthrough,
             'next_realm': next_realm_info['name'] if can_breakthrough else None,

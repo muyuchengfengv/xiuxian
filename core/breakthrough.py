@@ -38,6 +38,7 @@ class BreakthroughSystem:
         self.db = db
         self.player_mgr = player_mgr
         self.tribulation_sys = None  # 将在主程序中设置
+        self.pet_sys = None  # 灵宠系统（可选）
 
     def set_tribulation_system(self, tribulation_sys: 'TribulationSystem'):
         """
@@ -47,6 +48,15 @@ class BreakthroughSystem:
             tribulation_sys: 天劫系统实例
         """
         self.tribulation_sys = tribulation_sys
+
+    def set_pet_system(self, pet_sys):
+        """
+        设置灵宠系统（用于加成计算）
+
+        Args:
+            pet_sys: 灵宠系统实例
+        """
+        self.pet_sys = pet_sys
 
     async def attempt_breakthrough(self, user_id: str, skip_tribulation: bool = False) -> Dict:
         """
@@ -139,6 +149,19 @@ class BreakthroughSystem:
 
         # 6. 小境界突破：计算突破成功率
         success_rate, rate_factors = CombatCalculator.calculate_breakthrough_rate(player)
+
+        # 6.5 应用灵宠加成
+        if self.pet_sys:
+            try:
+                pet_bonuses = await self.pet_sys.get_active_pet_bonuses(user_id)
+                pet_breakthrough_bonus = pet_bonuses.get('breakthrough_bonus', 0.0)
+                if pet_breakthrough_bonus > 0:
+                    success_rate = min(1.0, success_rate + pet_breakthrough_bonus)
+                    rate_factors['灵宠加成'] = f"+{pet_breakthrough_bonus*100:.1f}%"
+                    logger.debug(f"应用灵宠突破加成: +{pet_breakthrough_bonus*100:.1f}%")
+            except Exception as e:
+                # 如果灵宠加成失败，记录日志但不影响突破
+                logger.warning(f"应用灵宠突破加成失败: {e}")
 
         # 7. 执行突破判定
         is_success = random.random() < success_rate

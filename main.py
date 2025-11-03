@@ -33,6 +33,9 @@ from .core.items import ItemManager, ItemError, ItemNotFoundError, InsufficientI
 # 导入坊市系统模块
 from .core.market import MarketSystem, MarketError, ItemNotOwnedError, ItemNotTradableError, ListingNotFoundError, InsufficientSpiritStoneError
 
+# 导入灵宠系统模块
+from .core.pet import PetSystem, PetError, PetNotFoundError, AlreadyHasPetError
+
 # 导入工具类
 from .utils import (
     MessageFormatter,
@@ -100,6 +103,9 @@ class XiuxianPlugin(Star):
 
         # 坊市系统管理器
         self.market_sys = None
+
+        # 灵宠系统管理器
+        self.pet_sys = None
 
         # 图片生成器
         self.card_generator = None
@@ -172,6 +178,12 @@ class XiuxianPlugin(Star):
             await self.market_sys.initialize()
             logger.info("✓ 坊市系统初始化完成")
 
+            # 初始化灵宠系统
+            logger.info("🐾 正在初始化灵宠系统...")
+            self.pet_sys = PetSystem(self.db, self.player_mgr)
+            await self.pet_sys.init_pet_templates()
+            logger.info("✓ 灵宠系统初始化完成")
+
             # 注入天劫系统到突破系统
             self.breakthrough_sys.set_tribulation_system(self.tribulation_sys)
 
@@ -193,6 +205,14 @@ class XiuxianPlugin(Star):
             self.cultivation_sys.set_sect_system(self.sect_sys)
             self.alchemy_sys.set_sect_system(self.sect_sys)
             self.refining_sys.set_sect_system(self.sect_sys)
+
+            # 注入灵宠系统到其他系统（用于加成计算）
+            self.cultivation_sys.set_pet_system(self.pet_sys)
+            self.breakthrough_sys.set_pet_system(self.pet_sys)
+
+            # 注入宗门系统到灵宠系统（用于宗门检查）
+            self.pet_sys.set_sect_system(self.sect_sys)
+
             logger.info("✓ 系统连接完成")
 
             # 初始化图片生成器
@@ -521,6 +541,10 @@ class XiuxianPlugin(Star):
             # 显示宗门加成
             if result.get('sect_bonus_rate', 0) > 0:
                 message_lines.append(f"🏛️宗门加成 +{result['sect_bonus_rate']*100:.0f}%")
+
+            # 显示灵宠加成
+            if result.get('pet_bonus_rate', 0) > 0:
+                message_lines.append(f"🐾灵宠加成 +{result['pet_bonus_rate']*100:.0f}%")
 
             # 检查是否可以突破
             if result['can_breakthrough']:
@@ -4140,4 +4164,267 @@ AI: /AI生成[类型] /AI历史 /AI帮助
             yield event.plain_result("您还没有创建角色，请先使用 /修仙 创建角色")
         except Exception as e:
             logger.error(f"查看我的上架失败: {e}", exc_info=True)
+            yield event.plain_result(f"查看失败：{str(e)}")
+
+    # ========== 灵宠系统命令 ==========
+
+    @filter.command("领取灵宠", alias={"claim_pet", "领宠"})
+    async def claim_starter_pet_cmd(self, event: AstrMessageEvent):
+        """从宗门领取初始灵宠"""
+        user_id = event.get_sender_id()
+        try:
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
+            message_text = self._get_message_text(event)
+            parts = message_text.split()
+
+            if len(parts) < 2:
+                # 显示可选灵宠
+                starters = await self.pet_sys.get_starter_pets()
+                lines = [
+                    "🐾 宗门初始灵宠",
+                    "─" * 40,
+                    "",
+                    "请选择一只灵宠领取（终身只能领取一次）：",
+                    ""
+                ]
+
+                for i, pet in enumerate(starters, 1):
+                    lines.append(
+                        f"{i}. {pet.get_rarity_color()}{pet.name}\n"
+                        f"   类型：{pet.pet_type}\n"
+                        f"   稀有度：{pet.rarity}\n"
+                        f"   {pet.description}\n"
+                    )
+
+                lines.extend([
+                    "─" * 40,
+                    "💡 使用方法：/领取灵宠 [编号]",
+                    "   例如：/领取灵宠 1"
+                ])
+
+                yield event.plain_result("\n".join(lines))
+                return
+
+            # 领取灵宠
+            try:
+                pet_index = int(parts[1])
+                player_pet = await self.pet_sys.claim_starter_pet(user_id, pet_index)
+
+                # 构建成功消息
+                yield event.plain_result(
+                    f"🎉 恭喜您领取了初始灵宠！\n\n"
+                    f"🐾 {player_pet.get_display_name()}\n"
+                    f"📝 获取途径：宗门福利\n\n"
+                    f"💡 使用 /我的灵宠 查看所有灵宠\n"
+                    f"   使用 /激活灵宠 1 让灵宠出战"
+                )
+            except ValueError:
+                yield event.plain_result("⚠️ 请输入有效的编号！")
+
+        except PlayerNotFoundError:
+            yield event.plain_result("您还没有创建角色，请先使用 /修仙 创建角色")
+        except (PetError, AlreadyHasPetError, PetNotFoundError) as e:
+            yield event.plain_result(f"⚠️ {str(e)}")
+        except Exception as e:
+            logger.error(f"领取灵宠失败: {e}", exc_info=True)
+            yield event.plain_result(f"领取失败：{str(e)}")
+
+    @filter.command("我的灵宠", alias={"my_pets", "灵宠列表"})
+    async def my_pets_cmd(self, event: AstrMessageEvent):
+        """查看我的所有灵宠"""
+        user_id = event.get_sender_id()
+        try:
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
+            pets = await self.pet_sys.get_player_pets(user_id)
+
+            if not pets:
+                yield event.plain_result(
+                    "🐾 您还没有灵宠\n\n"
+                    "💡 可以通过以下方式获得灵宠：\n"
+                    "   • 使用 /领取灵宠 在宗门领取初始灵宠\n"
+                    "   • 使用 /灵宠秘境 探索并捕获野生灵宠"
+                )
+                return
+
+            # 格式化显示
+            lines = ["🐾 我的灵宠", "─" * 40, ""]
+
+            for i, pet in enumerate(pets, 1):
+                status = "⭐ 出战中" if pet.is_active else ""
+                intimacy_level = pet.get_intimacy_level()
+                next_exp = pet.get_next_level_exp()
+
+                lines.append(
+                    f"{i}. {pet.get_display_name()} {status}\n"
+                    f"   经验：{pet.experience}/{next_exp}\n"
+                    f"   亲密度：{pet.intimacy}/100 ({intimacy_level})\n"
+                    f"   参战次数：{pet.battle_count}\n"
+                    f"   获取途径：{pet.acquired_from}\n"
+                )
+
+            lines.extend([
+                "",
+                f"📊 共 {len(pets)} 只灵宠",
+                "",
+                "💡 使用 /激活灵宠 [编号] 让灵宠出战",
+                "   使用 /灵宠详情 [编号] 查看详细信息"
+            ])
+
+            yield event.plain_result("\n".join(lines))
+
+        except PlayerNotFoundError:
+            yield event.plain_result("您还没有创建角色，请先使用 /修仙 创建角色")
+        except Exception as e:
+            logger.error(f"查看灵宠失败: {e}", exc_info=True)
+            yield event.plain_result(f"查看失败：{str(e)}")
+
+    @filter.command("激活灵宠", alias={"activate_pet", "出战灵宠"})
+    async def activate_pet_cmd(self, event: AstrMessageEvent):
+        """激活灵宠让其出战"""
+        user_id = event.get_sender_id()
+        try:
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
+            message_text = self._get_message_text(event)
+            parts = message_text.split()
+
+            if len(parts) < 2:
+                yield event.plain_result(
+                    "⚠️ 请指定要激活的灵宠编号\n\n"
+                    "💡 使用方法：/激活灵宠 [编号]\n"
+                    "   先使用 /我的灵宠 查看灵宠列表"
+                )
+                return
+
+            try:
+                pet_index = int(parts[1]) - 1
+                result = await self.pet_sys.activate_pet(user_id, pet_index)
+                yield event.plain_result(result['message'])
+            except ValueError:
+                yield event.plain_result("⚠️ 请输入有效的编号！")
+
+        except PlayerNotFoundError:
+            yield event.plain_result("您还没有创建角色，请先使用 /修仙 创建角色")
+        except XiuxianException as e:
+            yield event.plain_result(f"⚠️ {str(e)}")
+        except Exception as e:
+            logger.error(f"激活灵宠失败: {e}", exc_info=True)
+            yield event.plain_result(f"激活失败：{str(e)}")
+
+    @filter.command("灵宠秘境", alias={"pet_realm", "捕捉灵宠"})
+    async def pet_secret_realm_cmd(self, event: AstrMessageEvent):
+        """探索灵宠秘境"""
+        user_id = event.get_sender_id()
+        try:
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
+            result = await self.pet_sys.explore_secret_realm(user_id)
+            yield event.plain_result(result['message'])
+
+        except PlayerNotFoundError:
+            yield event.plain_result("您还没有创建角色，请先使用 /修仙 创建角色")
+        except XiuxianException as e:
+            yield event.plain_result(f"⚠️ {str(e)}")
+        except Exception as e:
+            logger.error(f"探索灵宠秘境失败: {e}", exc_info=True)
+            yield event.plain_result(f"探索失败：{str(e)}")
+
+    @filter.command("灵宠详情", alias={"pet_info", "查看灵宠"})
+    async def pet_detail_cmd(self, event: AstrMessageEvent):
+        """查看灵宠详细信息"""
+        user_id = event.get_sender_id()
+        try:
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
+            message_text = self._get_message_text(event)
+            parts = message_text.split()
+
+            if len(parts) < 2:
+                yield event.plain_result(
+                    "⚠️ 请指定要查看的灵宠编号\n\n"
+                    "💡 使用方法：/灵宠详情 [编号]\n"
+                    "   先使用 /我的灵宠 查看灵宠列表"
+                )
+                return
+
+            try:
+                pet_index = int(parts[1]) - 1
+                pets = await self.pet_sys.get_player_pets(user_id)
+
+                if pet_index < 0 or pet_index >= len(pets):
+                    yield event.plain_result("⚠️ 无效的灵宠编号！")
+                    return
+
+                pet = pets[pet_index]
+                if not pet.pet_template:
+                    yield event.plain_result("⚠️ 无法加载灵宠模板信息")
+                    return
+
+                template = pet.pet_template
+                intimacy_level = pet.get_intimacy_level()
+                next_exp = pet.get_next_level_exp()
+
+                # 解析属性和效果
+                import json
+                base_attrs = json.loads(template.base_attributes)
+
+                lines = [
+                    f"🐾 {pet.get_display_name()}",
+                    "─" * 40,
+                    "",
+                    f"📋 基础信息：",
+                    f"   种族：{template.name}",
+                    f"   类型：{template.pet_type}",
+                    f"   稀有度：{template.get_rarity_color()}{template.rarity}",
+                    f"   元素：{template.element or '无'}",
+                    "",
+                    f"📊 成长信息：",
+                    f"   等级：{pet.level}/{template.max_level}",
+                    f"   经验：{pet.experience}/{next_exp}",
+                    f"   成长率：{template.growth_rate}",
+                    "",
+                    f"💖 亲密度：{pet.intimacy}/100 ({intimacy_level})",
+                    f"⚔️ 参战次数：{pet.battle_count}",
+                    f"📅 获取时间：{pet.acquired_at[:10]}",
+                    f"📍 获取途径：{pet.acquired_from}",
+                    "",
+                    f"✨ 基础属性：",
+                ]
+
+                for attr, value in base_attrs.items():
+                    lines.append(f"   {attr}：{value}")
+
+                lines.extend([
+                    "",
+                    f"📝 描述：",
+                    f"   {template.description}"
+                ])
+
+                if template.evolution_to:
+                    lines.extend([
+                        "",
+                        f"🔄 可进化至更强形态"
+                    ])
+
+                yield event.plain_result("\n".join(lines))
+
+            except ValueError:
+                yield event.plain_result("⚠️ 请输入有效的编号！")
+
+        except PlayerNotFoundError:
+            yield event.plain_result("您还没有创建角色，请先使用 /修仙 创建角色")
+        except Exception as e:
+            logger.error(f"查看灵宠详情失败: {e}", exc_info=True)
             yield event.plain_result(f"查看失败：{str(e)}")

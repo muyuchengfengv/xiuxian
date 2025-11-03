@@ -66,15 +66,7 @@ class MarketSystem:
 
     async def _init_npc_items(self):
         """初始化NPC上架的基础物品"""
-        # 检查是否已经初始化过
-        existing = await self.db.fetchone(
-            "SELECT id FROM market_items WHERE seller_id = 'npc' LIMIT 1"
-        )
-
-        if existing:
-            return  # 已经初始化过，不重复添加
-
-        logger.info("正在初始化NPC坊市物品...")
+        logger.info("正在检查并添加NPC坊市物品...")
 
         npc_items = [
             # ===== 炼气期丹药 =====
@@ -416,7 +408,19 @@ class MarketSystem:
             },
         ]
 
+        added_count = 0
         for item in npc_items:
+            # 检查该物品是否已存在
+            existing = await self.db.fetchone(
+                "SELECT id FROM market_items WHERE seller_id = 'npc' AND item_id = ?",
+                (item["item_id"],)
+            )
+
+            if existing:
+                # 物品已存在，跳过
+                continue
+
+            # 物品不存在，添加到坊市
             listing_id = str(uuid.uuid4())
             await self.db.execute(
                 """
@@ -441,8 +445,12 @@ class MarketSystem:
                     datetime.now().isoformat()
                 )
             )
+            added_count += 1
 
-        logger.info(f"NPC坊市物品初始化完成，共上架 {len(npc_items)} 种物品")
+        if added_count > 0:
+            logger.info(f"NPC坊市物品初始化完成，新增 {added_count} 种物品")
+        else:
+            logger.info("NPC坊市物品已是最新，无需添加")
 
     async def list_item(self, user_id: str, item_type: str, item_id: str,
                        price: int, quantity: int = 1) -> Dict:

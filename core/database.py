@@ -74,7 +74,8 @@ class DatabaseManager:
             "items", "sects", "sect_members", "ai_generation_history",
             "tribulations", "profession_exams", "locations", "player_locations",
             "cultivation_methods", "player_cultivation_methods", "method_skills",
-            "market_items", "market_transactions"
+            "market_items", "market_transactions",
+            "pets", "player_pets", "pet_secret_realms"
         ]
         
         for table in tables_to_backup:
@@ -101,7 +102,8 @@ class DatabaseManager:
             "items", "sects", "sect_members", "ai_generation_history",
             "tribulations", "profession_exams", "locations", "player_locations",
             "cultivation_methods", "player_cultivation_methods", "method_skills",
-            "market_items", "market_transactions"
+            "market_items", "market_transactions",
+            "pets", "player_pets", "pet_secret_realms"
         ]
         
         for table in tables_to_restore:
@@ -585,6 +587,49 @@ class DatabaseManager:
             transaction_time TEXT NOT NULL
         """)
 
+        # ===== 灵宠系统表 =====
+        # 灵宠模板表
+        await self._ensure_table_exists("pets", """
+            id INTEGER PRIMARY KEY,
+            name TEXT NOT NULL,
+            pet_type TEXT NOT NULL,
+            rarity TEXT NOT NULL,
+            description TEXT,
+            base_attributes TEXT NOT NULL,
+            growth_rate REAL DEFAULT 1.0,
+            max_level INTEGER DEFAULT 50,
+            element TEXT,
+            evolution_to INTEGER,
+            capture_difficulty INTEGER DEFAULT 50,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        """)
+
+        # 玩家灵宠表
+        await self._ensure_table_exists("player_pets", """
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL,
+            pet_id INTEGER NOT NULL,
+            pet_name TEXT NOT NULL,
+            level INTEGER DEFAULT 1,
+            experience INTEGER DEFAULT 0,
+            is_active INTEGER DEFAULT 0,
+            intimacy INTEGER DEFAULT 0,
+            battle_count INTEGER DEFAULT 0,
+            acquired_from TEXT NOT NULL,
+            acquired_at TIMESTAMP NOT NULL,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        """)
+
+        # 灵宠秘境记录表
+        await self._ensure_table_exists("pet_secret_realms", """
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT UNIQUE NOT NULL,
+            realm_level INTEGER DEFAULT 1,
+            exploration_count INTEGER DEFAULT 0,
+            last_exploration_at TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        """)
+
     async def _create_indexes(self):
         """创建索引以优化查询性能"""
         indexes = [
@@ -604,6 +649,9 @@ class DatabaseManager:
             "CREATE INDEX IF NOT EXISTS idx_tribulations_status ON tribulations(user_id, status)",
             "CREATE INDEX IF NOT EXISTS idx_active_formations_user ON active_formations(user_id)",
             "CREATE INDEX IF NOT EXISTS idx_active_formations_location ON active_formations(location_id, is_active)",
+            "CREATE INDEX IF NOT EXISTS idx_player_pets_user ON player_pets(user_id)",
+            "CREATE INDEX IF NOT EXISTS idx_player_pets_active ON player_pets(user_id, is_active)",
+            "CREATE INDEX IF NOT EXISTS idx_pet_secret_realms_user ON pet_secret_realms(user_id)",
             "CREATE INDEX IF NOT EXISTS idx_locations_region ON locations(region_type)",
             "CREATE INDEX IF NOT EXISTS idx_locations_danger ON locations(danger_level)",
             "CREATE INDEX IF NOT EXISTS idx_player_locations_user ON player_locations(user_id)",
