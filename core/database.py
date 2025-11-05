@@ -174,18 +174,37 @@ class DatabaseManager:
             existing_columns = {row[1] for row in await cursor.fetchall()}
             logger.info(f"表 {table_name} 现有列: {existing_columns}")
 
-            # 解析新schema中的列定义
-            columns = [col.strip() for col in schema.split(',') if col.strip()]
+            # 解析新schema中的列定义（正确处理括号内的逗号）
+            columns = []
+            current_parts = []
+            paren_count = 0
+
+            for part in schema.split(','):
+                current_parts.append(part)
+                paren_count += part.count('(') - part.count(')')
+
+                if paren_count == 0:
+                    # 括号匹配，这是一个完整的列定义或约束
+                    full_column = ','.join(current_parts).strip()
+                    if full_column:
+                        columns.append(full_column)
+                    current_parts = []
+
+            # 处理剩余部分（如果有）
+            if current_parts:
+                full_column = ','.join(current_parts).strip()
+                if full_column:
+                    columns.append(full_column)
 
             for column in columns:
-                # 提取列名（第一个词）
-                column_name = column.split()[0]
-
                 # 跳过表级约束（ALTER TABLE ADD COLUMN不支持添加约束）
                 constraint_keywords = ['UNIQUE(', 'PRIMARY', 'FOREIGN', 'CHECK(', 'CONSTRAINT']
-                if any(column.strip().upper().startswith(kw) or column.strip().upper().startswith(kw.replace('(', ' (')) for kw in constraint_keywords):
-                    logger.info(f"跳过表级约束: {column.strip()[:50]}...")
+                if any(column.upper().startswith(kw) or column.upper().startswith(kw.replace('(', ' (')) for kw in constraint_keywords):
+                    logger.info(f"跳过表级约束: {column[:50]}...")
                     continue
+
+                # 提取列名（第一个词）
+                column_name = column.split()[0]
 
                 if column_name not in existing_columns:
                     # 添加缺失的列
