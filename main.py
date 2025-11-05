@@ -176,6 +176,15 @@ class XiuxianPlugin(Star):
 
             # 初始化世界管理器（支持LLM故事生成）
             self.world_mgr = WorldManager(self.db, self.player_mgr, self.context, enable_ai)
+
+            # 初始化玩家状态管理器
+            from .core.player_status import PlayerStatusManager
+            self.status_mgr = PlayerStatusManager(self.db)
+
+            # 初始化探索队伍管理器
+            from .core.exploration_team import ExplorationTeamManager
+            self.team_mgr = ExplorationTeamManager(self.db)
+
             logger.info("✓ 核心系统初始化完成")
             logger.info("✓ 技能系统初始化完成")
 
@@ -545,6 +554,14 @@ class XiuxianPlugin(Star):
             # 执行修炼
             result = await self.cultivation_sys.cultivate(user_id)
 
+            # 应用玩家状态修正（重伤等）
+            status_modifier = await self.status_mgr.get_cultivation_speed_modifier(user_id)
+            if status_modifier < 1.0:
+                # 有减益效果，重新计算修为获得
+                original_gain = result['cultivation_gained']
+                result['cultivation_gained'] = int(original_gain * status_modifier)
+                result['status_penalty'] = original_gain - result['cultivation_gained']
+
             # 更新宗门任务进度
             try:
                 task_updates = await self.sect_sys.update_task_progress(user_id, 'cultivation', 1)
@@ -561,6 +578,14 @@ class XiuxianPlugin(Star):
                 f"✨修炼完成 +{result['cultivation_gained']}修为",
                 f"📊当前 {result['total_cultivation']}"
             ]
+
+            # 显示状态惩罚
+            if result.get('status_penalty', 0) > 0:
+                message_lines.append(f"⚠️ 状态惩罚 -{result['status_penalty']}修为")
+                # 显示状态说明
+                status_desc = await self.status_mgr.get_status_description(user_id)
+                if status_desc != "状态正常":
+                    message_lines.append(f"📍 {status_desc}")
 
             # 显示宗门加成
             if result.get('sect_bonus_rate', 0) > 0:
@@ -3660,6 +3685,22 @@ class XiuxianPlugin(Star):
                 )
                 lines.append(f"\n💔 生命值 -{damage}")
 
+                # 检查血量是否归零
+                player = await self.player_mgr.get_player(user_id)
+                if player and player.hp <= 1:
+                    # 应用重伤状态
+                    injury_info = await self.status_mgr.apply_injured_status(user_id, severity=1)
+                    lines.append("\n" + "=" * 40)
+                    lines.append("💔 你受了重伤，无法继续探索！")
+                    lines.append(f"⚠️ {injury_info['data']['description']}")
+                    lines.append("🏥 请回去休息恢复...")
+
+                    # 强制结束探索
+                    self._end_exploration_session(user_id)
+
+                    yield event.plain_result("\n".join(lines))
+                    return
+
             # 检查是否继续探索
             session['round'] += 1
             session['story_history'].append({
@@ -3748,6 +3789,242 @@ class XiuxianPlugin(Star):
             logger.error(f"结束探索失败: {e}", exc_info=True)
             yield event.plain_result(f"结束探索失败：{str(e)}")
 
+    # ========== 组队探索系统命令 ==========
+
+    @filter.command("组队探索", alias={"team_explore", "邀请探索"})
+    async def team_explore_cmd(self, event: AstrMessageEvent):
+        """创建队伍并邀请其他玩家一起探索"""
+        user_id = event.get_sender_id()
+        message_text = self._get_message_text(event)
+
+        try:
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
+            # 解析@的用户列表
+            # 支持格式：/组队探索 @user1 @user2 或 /组队探索 user1 user2
+            parts = message_text.split()
+            if len(parts) < 2:
+                yield event.plain_result(
+                    "⚠️ 请@要邀请的玩家\n\n"
+                    "💡 使用方法：/组队探索 @user1 @user2\n"
+                    "   或：/组队探索 user1 user2"
+                )
+                return
+
+            # 提取被邀请的玩家ID（这里需要根据实际情况解析@）
+            # 简化版：假设后面跟的是用户ID
+            invited_users = []
+            for part in parts[1:]:
+                invited_id = part.strip('@').strip()
+                if invited_id and invited_id != user_id:
+                    invited_users.append(invited_id)
+
+            if not invited_users:
+                yield event.plain_result("⚠️ 请至少邀请一位其他玩家")
+                return
+
+            # 检查是否已有活跃队伍
+            existing_team = await self.team_mgr.get_player_active_team(user_id)
+            if existing_team:
+                yield event.plain_result("⚠️ 你已经在一个队伍中了！\n\n💡 使用 /离开队伍 先离开当前队伍")
+                return
+
+            # 获取玩家当前位置
+            location, _ = await self.world_mgr.get_player_location(user_id)
+
+            # 创建队伍
+            team_id = await self.team_mgr.create_team(user_id, location.id)
+
+            # 发送邀请
+            success_invites = []
+            failed_invites = []
+            for invited_id in invited_users:
+                try:
+                    await self.team_mgr.invite_member(team_id, invited_id, user_id)
+                    success_invites.append(invited_id)
+                except Exception as e:
+                    failed_invites.append(f"{invited_id}: {str(e)}")
+
+            lines = [
+                f"🎉 探索队伍已创建！",
+                f"📍 地点：{location.name}",
+                f"👥 队长：你",
+                ""
+            ]
+
+            if success_invites:
+                lines.append("✅ 成功邀请：")
+                for inv_id in success_invites:
+                    lines.append(f"   • {inv_id}")
+                lines.append("")
+                lines.append("⏳ 等待队员接受邀请（30秒超时）")
+
+            if failed_invites:
+                lines.append("")
+                lines.append("❌ 邀请失败：")
+                for fail in failed_invites:
+                    lines.append(f"   • {fail}")
+
+            yield event.plain_result("\n".join(lines))
+
+        except Exception as e:
+            logger.error(f"组队探索失败: {e}", exc_info=True)
+            yield event.plain_result(f"组队探索失败：{str(e)}")
+
+    @filter.command("查看邀请", alias={"my_invites", "探索邀请"})
+    async def view_invites_cmd(self, event: AstrMessageEvent):
+        """查看收到的探索邀请"""
+        user_id = event.get_sender_id()
+
+        try:
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
+            invites = await self.team_mgr.get_player_invites(user_id)
+
+            if not invites:
+                yield event.plain_result("📭 你当前没有待处理的探索邀请")
+                return
+
+            lines = ["📬 探索邀请列表", "─" * 40, ""]
+
+            for i, invite in enumerate(invites, 1):
+                # 获取地点信息
+                location = await self.world_mgr.get_location(invite['location_id'])
+                lines.append(f"{i}. 队长：{invite['leader_id']}")
+                lines.append(f"   地点：{location.name if location else '未知'}")
+                lines.append("")
+
+            lines.append("💡 使用以下命令响应邀请：")
+            lines.append("   /接受邀请 [队伍编号]")
+            lines.append("   /拒绝邀请 [队伍编号]")
+
+            yield event.plain_result("\n".join(lines))
+
+        except Exception as e:
+            logger.error(f"查看邀请失败: {e}", exc_info=True)
+            yield event.plain_result(f"查看邀请失败：{str(e)}")
+
+    @filter.command("接受邀请", alias={"accept_invite", "同意探索"})
+    async def accept_invite_cmd(self, event: AstrMessageEvent):
+        """接受探索邀请"""
+        user_id = event.get_sender_id()
+        message_text = self._get_message_text(event)
+
+        try:
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
+            parts = message_text.split()
+            if len(parts) < 2:
+                yield event.plain_result("⚠️ 请指定要接受的邀请编号\n\n💡 使用方法：/接受邀请 [编号]")
+                return
+
+            try:
+                invite_num = int(parts[1])
+            except ValueError:
+                yield event.plain_result("⚠️ 请输入有效的编号！")
+                return
+
+            # 获取邀请列表
+            invites = await self.team_mgr.get_player_invites(user_id)
+            if invite_num < 1 or invite_num > len(invites):
+                yield event.plain_result(f"⚠️ 无效的编号！请选择 1-{len(invites)}")
+                return
+
+            invite = invites[invite_num - 1]
+            team_id = invite['id']
+
+            # 接受邀请
+            await self.team_mgr.accept_invite(team_id, user_id)
+
+            # 获取队伍信息
+            team = await self.team_mgr.get_team(team_id)
+            location = await self.world_mgr.get_location(team['location_id'])
+
+            yield event.plain_result(
+                f"✅ 已加入探索队伍！\n\n"
+                f"📍 地点：{location.name if location else '未知'}\n"
+                f"👥 队长：{team['leader_id']}\n\n"
+                f"⏳ 等待队长开始探索..."
+            )
+
+        except Exception as e:
+            logger.error(f"接受邀请失败: {e}", exc_info=True)
+            yield event.plain_result(f"接受邀请失败：{str(e)}")
+
+    @filter.command("拒绝邀请", alias={"reject_invite", "拒绝探索"})
+    async def reject_invite_cmd(self, event: AstrMessageEvent):
+        """拒绝探索邀请"""
+        user_id = event.get_sender_id()
+        message_text = self._get_message_text(event)
+
+        try:
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
+            parts = message_text.split()
+            if len(parts) < 2:
+                yield event.plain_result("⚠️ 请指定要拒绝的邀请编号\n\n💡 使用方法：/拒绝邀请 [编号]")
+                return
+
+            try:
+                invite_num = int(parts[1])
+            except ValueError:
+                yield event.plain_result("⚠️ 请输入有效的编号！")
+                return
+
+            # 获取邀请列表
+            invites = await self.team_mgr.get_player_invites(user_id)
+            if invite_num < 1 or invite_num > len(invites):
+                yield event.plain_result(f"⚠️ 无效的编号！请选择 1-{len(invites)}")
+                return
+
+            invite = invites[invite_num - 1]
+            team_id = invite['id']
+
+            # 拒绝邀请
+            await self.team_mgr.reject_invite(team_id, user_id)
+
+            yield event.plain_result("✅ 已拒绝探索邀请")
+
+        except Exception as e:
+            logger.error(f"拒绝邀请失败: {e}", exc_info=True)
+            yield event.plain_result(f"拒绝邀请失败：{str(e)}")
+
+    @filter.command("离开队伍", alias={"leave_team", "退出队伍"})
+    async def leave_team_cmd(self, event: AstrMessageEvent):
+        """离开当前探索队伍"""
+        user_id = event.get_sender_id()
+
+        try:
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
+            # 获取玩家当前队伍
+            team = await self.team_mgr.get_player_active_team(user_id)
+            if not team:
+                yield event.plain_result("⚠️ 你当前不在任何队伍中")
+                return
+
+            # 离开队伍
+            await self.team_mgr.leave_team(team['id'], user_id)
+
+            if team['leader_id'] == user_id:
+                yield event.plain_result("✅ 队伍已解散")
+            else:
+                yield event.plain_result("✅ 已离开队伍")
+
+        except Exception as e:
+            logger.error(f"离开队伍失败: {e}", exc_info=True)
+            yield event.plain_result(f"离开队伍失败：{str(e)}")
+
     @filter.command("地点详情", alias={"location_info", "地点信息"})
     async def location_info_cmd(self, event: AstrMessageEvent):
         """查看地点详细信息"""
@@ -3802,7 +4079,8 @@ class XiuxianPlugin(Star):
 战斗: /切磋@用户 /战力 /挑战[等级] /使用技能[技能名]
 装备: /储物袋 /装备[#] /卸下[槽位] /强化[#] /获得装备[类型]
 技能: /技能 /使用技能[技能名]
-世界: /地点 /地图 /前往[#] /探索 /地点详情
+世界: /地点 /地图 /前往[#] /探索 /地点详情 /结束探索
+组队: /组队探索[@用户] /查看邀请 /接受邀请[#] /拒绝邀请[#] /离开队伍
 职业: /学习职业[类型] /我的职业
 炼丹: /丹方列表 /炼丹[#]
 炼器: /图纸列表 /炼器[#]

@@ -718,6 +718,39 @@ class DatabaseManager:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             """)
 
+            # 玩家状态表（重伤、中毒等临时状态）
+            await self._ensure_table_exists("player_status", """
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL,
+                status_type TEXT NOT NULL,
+                status_data TEXT,
+                severity INTEGER DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                expires_at TIMESTAMP NOT NULL
+            """)
+
+            # 探索队伍表
+            await self._ensure_table_exists("exploration_teams", """
+                id TEXT PRIMARY KEY,
+                leader_id TEXT NOT NULL,
+                location_id INTEGER NOT NULL,
+                status TEXT DEFAULT 'waiting',
+                session_data TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                started_at TIMESTAMP,
+                finished_at TIMESTAMP
+            """)
+
+            # 队伍成员表
+            await self._ensure_table_exists("team_members", """
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                team_id TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                status TEXT DEFAULT 'invited',
+                joined_at TIMESTAMP,
+                UNIQUE(team_id, user_id)
+            """)
+
             logger.info("✓ 所有表结构创建/更新完成")
         except Exception as e:
             logger.error(f"创建或更新表结构时出错: {e}", exc_info=True)
