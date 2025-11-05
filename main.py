@@ -210,6 +210,9 @@ class XiuxianPlugin(Star):
             self.cultivation_sys.set_pet_system(self.pet_sys)
             self.breakthrough_sys.set_pet_system(self.pet_sys)
 
+            # 注入世界系统到修炼系统（用于地点灵气加成）
+            self.cultivation_sys.set_world_manager(self.world_mgr)
+
             # 注入宗门系统到灵宠系统（用于宗门检查）
             self.pet_sys.set_sect_system(self.sect_sys)
 
@@ -545,6 +548,12 @@ class XiuxianPlugin(Star):
             # 显示灵宠加成
             if result.get('pet_bonus_rate', 0) > 0:
                 message_lines.append(f"🐾灵宠加成 +{result['pet_bonus_rate']*100:.0f}%")
+
+            # 显示地点加成
+            if result.get('location_bonus_rate', 0) != 0:
+                location_name = result.get('location_name', '未知')
+                bonus = result['location_bonus_rate'] * 100
+                message_lines.append(f"🗺️地点加成 [{location_name}] {bonus:+.0f}%")
 
             # 检查是否可以突破
             if result['can_breakthrough']:
@@ -2924,10 +2933,18 @@ class XiuxianPlugin(Star):
 /灵宠秘境 - 探索秘境捕获野生灵宠
 /灵宠详情 [编号] - 查看灵宠详细属性
 
+🐾 灵宠养成：
+/喂养灵宠 [编号] - 消耗灵石喂养灵宠提升亲密度
+/训练灵宠 [编号] - 消耗灵石训练灵宠获得经验
+/升级灵宠 [编号] - 经验足够时升级灵宠
+/进化灵宠 [编号] - 满足条件时进化成更强形态
+
 💡 提示：
 • 加入宗门可获得建筑加成
 • 加入宗门后可领取一只初始灵宠
 • 激活灵宠可获得修炼/突破等加成
+• 灵宠等级和亲密度会增强加成效果
+• 部分灵宠可进化成更强大的形态
 • 积极捐献可提升个人地位
 • 完成宗门任务获得丰厚奖励
 • 宗门越强，成员收益越高
@@ -3363,25 +3380,63 @@ class XiuxianPlugin(Star):
                 ""
             ]
 
-            if result['discoveries']:
-                lines.append("🎁 发现:")
-                for discovery in result['discoveries']:
-                    lines.append(f"   {discovery['description']}")
+            # 如果有事件
+            if result.get('event'):
+                event_info = result['event']
+                lines.append(f"{event_info['title']}")
+                lines.append("")
+                lines.append(event_info['description'])
                 lines.append("")
 
-            if result['encounters']:
-                lines.append("⚠️ 遭遇:")
-                for encounter in result['encounters']:
-                    lines.append(f"   {encounter['description']}")
-                lines.append("")
+                # 如果需要玩家做出选择
+                if result.get('has_choice') and event_info.get('choices'):
+                    lines.append("请选择你的行动：")
+                    for i, choice in enumerate(event_info['choices'], 1):
+                        lines.append(f"{i}. {choice['text']} - {choice['description']}")
+                    lines.append("")
+                    lines.append("💡 使用 /选择 [编号] 做出选择")
+                    lines.append(f"   例如：/选择 1")
 
-            if not result['discoveries'] and not result['encounters']:
+                    # 暂存事件数据供后续选择使用
+                    # TODO: 实现事件数据存储
+                else:
+                    # 自动结算的事件
+                    auto_result = event_info.get('auto_result', {})
+                    if auto_result.get('message'):
+                        lines.append(auto_result['message'])
+
+                    # 发放奖励
+                    rewards = auto_result.get('rewards', {})
+                    if rewards.get('spirit_stone', 0) > 0:
+                        player = await self.player_mgr.get_player(user_id)
+                        await self.db.execute(
+                            "UPDATE players SET spirit_stone = spirit_stone + ? WHERE user_id = ?",
+                            (rewards['spirit_stone'], user_id)
+                        )
+                        lines.append(f"💎 灵石 +{rewards['spirit_stone']}")
+
+                    if rewards.get('cultivation', 0) > 0:
+                        await self.db.execute(
+                            "UPDATE players SET cultivation = cultivation + ? WHERE user_id = ?",
+                            (rewards['cultivation'], user_id)
+                        )
+                        lines.append(f"✨ 修为 +{rewards['cultivation']}")
+
+                    # 处理伤害
+                    if auto_result.get('damage', 0) > 0:
+                        damage = auto_result['damage']
+                        await self.db.execute(
+                            "UPDATE players SET hp = MAX(1, hp - ?) WHERE user_id = ?",
+                            (damage, user_id)
+                        )
+                        lines.append(f"💔 生命值 -{damage}")
+            else:
+                # 没有触发事件
                 lines.append("🌫️ 什么也没有发现...")
                 lines.append("")
-
-            if result['rewards'].get('spirit_stone', 0) > 0:
-                # TODO: 实际发放灵石奖励
-                lines.append(f"💎 获得灵石: +{result['rewards']['spirit_stone']}")
+                lines.append("💡 提示：探索有概率触发各种事件")
+                lines.append("   • 地点危险等级越高，事件越丰富")
+                lines.append("   • 灵气浓度越高，好事件概率越大")
 
             yield event.plain_result("\n".join(lines))
 
@@ -3457,6 +3512,7 @@ class XiuxianPlugin(Star):
 坊市: /坊市 /上架[类型][#][价][量] /购买[#] /下架[#] /我的上架
 宗门: /宗门列表 /加入宗门[名] /宗门信息 /宗门帮助 (详细命令)
 灵宠: /领取灵宠[#] /我的灵宠 /激活灵宠[#] /灵宠秘境 /灵宠详情[#]
+养成: /喂养灵宠[#] /训练灵宠[#] /升级灵宠[#] /进化灵宠[#]
 天劫: /渡劫 /天劫信息 /天劫历史 /天劫统计
 功法: /功法 /功法装备[#][槽] /已装备功法 /功法详情[#] /获得功法[类型]
 AI: /AI生成[类型] /AI历史 /AI帮助
@@ -4555,3 +4611,221 @@ AI: /AI生成[类型] /AI历史 /AI帮助
         except Exception as e:
             logger.error(f"查看灵宠详情失败: {e}", exc_info=True)
             yield event.plain_result(f"查看失败：{str(e)}")
+
+    @filter.command("喂养灵宠", alias={"feed_pet", "喂宠"})
+    async def feed_pet_cmd(self, event: AstrMessageEvent):
+        """喂养灵宠提升亲密度"""
+        user_id = event.get_sender_id()
+        try:
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
+            message_text = self._get_message_text(event)
+            parts = message_text.split()
+
+            if len(parts) < 2:
+                yield event.plain_result(
+                    "⚠️ 请指定要喂养的灵宠编号\n\n"
+                    "💡 使用方法：/喂养灵宠 [编号]\n"
+                    "   例如：/喂养灵宠 1\n\n"
+                    "📝 喂养说明：\n"
+                    "   • 消耗灵石喂养灵宠\n"
+                    "   • 提升亲密度 3-8点\n"
+                    "   • 消耗随灵宠等级增加\n"
+                    "   • 亲密度提升加成效果"
+                )
+                return
+
+            try:
+                pet_index = int(parts[1]) - 1
+                pets = await self.pet_sys.get_player_pets(user_id)
+
+                if pet_index < 0 or pet_index >= len(pets):
+                    yield event.plain_result("⚠️ 无效的灵宠编号！")
+                    return
+
+                pet = pets[pet_index]
+                result = await self.pet_sys.feed_pet(user_id, pet.id)
+
+                if result['success']:
+                    yield event.plain_result(result['message'])
+                else:
+                    yield event.plain_result(f"⚠️ {result['message']}")
+
+            except ValueError as e:
+                if "灵石不足" in str(e):
+                    yield event.plain_result(f"⚠️ {str(e)}")
+                else:
+                    yield event.plain_result("⚠️ 请输入有效的编号！")
+
+        except PlayerNotFoundError:
+            yield event.plain_result("您还没有创建角色，请先使用 /修仙 创建角色")
+        except PetNotFoundError as e:
+            yield event.plain_result(f"⚠️ {str(e)}")
+        except Exception as e:
+            logger.error(f"喂养灵宠失败: {e}", exc_info=True)
+            yield event.plain_result(f"喂养失败：{str(e)}")
+
+    @filter.command("训练灵宠", alias={"train_pet", "练宠"})
+    async def train_pet_cmd(self, event: AstrMessageEvent):
+        """训练灵宠提升经验"""
+        user_id = event.get_sender_id()
+        try:
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
+            message_text = self._get_message_text(event)
+            parts = message_text.split()
+
+            if len(parts) < 2:
+                yield event.plain_result(
+                    "⚠️ 请指定要训练的灵宠编号\n\n"
+                    "💡 使用方法：/训练灵宠 [编号]\n"
+                    "   例如：/训练灵宠 1\n\n"
+                    "📝 训练说明：\n"
+                    "   • 消耗灵石训练灵宠\n"
+                    "   • 获得经验值\n"
+                    "   • 经验增加受成长率影响\n"
+                    "   • 消耗随灵宠等级增加"
+                )
+                return
+
+            try:
+                pet_index = int(parts[1]) - 1
+                pets = await self.pet_sys.get_player_pets(user_id)
+
+                if pet_index < 0 or pet_index >= len(pets):
+                    yield event.plain_result("⚠️ 无效的灵宠编号！")
+                    return
+
+                pet = pets[pet_index]
+                result = await self.pet_sys.train_pet(user_id, pet.id)
+
+                if result['success']:
+                    yield event.plain_result(result['message'])
+                else:
+                    yield event.plain_result(f"⚠️ {result['message']}")
+
+            except ValueError as e:
+                if "灵石不足" in str(e):
+                    yield event.plain_result(f"⚠️ {str(e)}")
+                else:
+                    yield event.plain_result("⚠️ 请输入有效的编号！")
+
+        except PlayerNotFoundError:
+            yield event.plain_result("您还没有创建角色，请先使用 /修仙 创建角色")
+        except PetNotFoundError as e:
+            yield event.plain_result(f"⚠️ {str(e)}")
+        except Exception as e:
+            logger.error(f"训练灵宠失败: {e}", exc_info=True)
+            yield event.plain_result(f"训练失败：{str(e)}")
+
+    @filter.command("升级灵宠", alias={"level_up_pet", "宠物升级"})
+    async def level_up_pet_cmd(self, event: AstrMessageEvent):
+        """灵宠升级"""
+        user_id = event.get_sender_id()
+        try:
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
+            message_text = self._get_message_text(event)
+            parts = message_text.split()
+
+            if len(parts) < 2:
+                yield event.plain_result(
+                    "⚠️ 请指定要升级的灵宠编号\n\n"
+                    "💡 使用方法：/升级灵宠 [编号]\n"
+                    "   例如：/升级灵宠 1\n\n"
+                    "📝 升级说明：\n"
+                    "   • 经验达到要求时可以升级\n"
+                    "   • 升级后提升加成效果\n"
+                    "   • 先使用 /我的灵宠 查看灵宠列表"
+                )
+                return
+
+            try:
+                pet_index = int(parts[1]) - 1
+                pets = await self.pet_sys.get_player_pets(user_id)
+
+                if pet_index < 0 or pet_index >= len(pets):
+                    yield event.plain_result("⚠️ 无效的灵宠编号！")
+                    return
+
+                pet = pets[pet_index]
+                result = await self.pet_sys.level_up_pet(user_id, pet.id)
+
+                if result['success']:
+                    yield event.plain_result(result['message'])
+                else:
+                    yield event.plain_result(f"⚠️ {result['message']}")
+
+            except ValueError:
+                yield event.plain_result("⚠️ 请输入有效的编号！")
+
+        except PlayerNotFoundError:
+            yield event.plain_result("您还没有创建角色，请先使用 /修仙 创建角色")
+        except PetNotFoundError as e:
+            yield event.plain_result(f"⚠️ {str(e)}")
+        except Exception as e:
+            logger.error(f"升级灵宠失败: {e}", exc_info=True)
+            yield event.plain_result(f"升级失败：{str(e)}")
+
+    @filter.command("进化灵宠", alias={"evolve_pet", "宠物进化"})
+    async def evolve_pet_cmd(self, event: AstrMessageEvent):
+        """灵宠进化"""
+        user_id = event.get_sender_id()
+        try:
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
+            message_text = self._get_message_text(event)
+            parts = message_text.split()
+
+            if len(parts) < 2:
+                yield event.plain_result(
+                    "⚠️ 请指定要进化的灵宠编号\n\n"
+                    "💡 使用方法：/进化灵宠 [编号]\n"
+                    "   例如：/进化灵宠 1\n\n"
+                    "📝 进化说明：\n"
+                    "   • 并非所有灵宠都能进化\n"
+                    "   • 需要达到等级要求（最大等级的80%）\n"
+                    "   • 需要达到亲密度要求（80点）\n"
+                    "   • 消耗大量灵石\n"
+                    "   • 进化后变成更强大的形态\n"
+                    "   • 进化后亲密度保留一半"
+                )
+                return
+
+            try:
+                pet_index = int(parts[1]) - 1
+                pets = await self.pet_sys.get_player_pets(user_id)
+
+                if pet_index < 0 or pet_index >= len(pets):
+                    yield event.plain_result("⚠️ 无效的灵宠编号！")
+                    return
+
+                pet = pets[pet_index]
+                result = await self.pet_sys.evolve_pet(user_id, pet.id)
+
+                if result['success']:
+                    yield event.plain_result(result['message'])
+                else:
+                    yield event.plain_result(f"⚠️ {result['message']}")
+
+            except ValueError as e:
+                if "灵石不足" in str(e):
+                    yield event.plain_result(f"⚠️ {str(e)}")
+                else:
+                    yield event.plain_result("⚠️ 请输入有效的编号！")
+
+        except PlayerNotFoundError:
+            yield event.plain_result("您还没有创建角色，请先使用 /修仙 创建角色")
+        except PetNotFoundError as e:
+            yield event.plain_result(f"⚠️ {str(e)}")
+        except Exception as e:
+            logger.error(f"进化灵宠失败: {e}", exc_info=True)
+            yield event.plain_result(f"进化失败：{str(e)}")

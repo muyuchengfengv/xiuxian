@@ -527,7 +527,7 @@ BASE_CULTIVATION_GAIN: int = 50
 BASE_BREAKTHROUGH_RATE: float = 0.50  # 50%
 
 # 战斗回合上限
-MAX_COMBAT_ROUNDS: int = 10
+MAX_COMBAT_ROUNDS: int = 100
 
 # 属性对战斗数值的影响
 ATTRIBUTE_COMBAT_MULTIPLIER: Dict[str, Dict[str, float]] = {

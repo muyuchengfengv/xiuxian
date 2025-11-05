@@ -720,3 +720,364 @@ class PetSystem:
         except Exception as e:
             logger.error(f"获取灵宠加成失败: {e}", exc_info=True)
             return bonuses
+
+    async def feed_pet(self, user_id: str, pet_id: int, item_type: str = "spirit_stone") -> Dict[str, Any]:
+        """
+        喂养灵宠，提升亲密度
+
+        Args:
+            user_id: 用户ID
+            pet_id: 玩家灵宠ID
+            item_type: 喂养物品类型 (spirit_stone: 灵石, spiritual_food: 灵食)
+
+        Returns:
+            喂养结果字典
+
+        Raises:
+            PetNotFoundError: 灵宠不存在
+            ValueError: 灵石不足
+        """
+        # 获取灵宠
+        row = await self.db.fetchone(
+            "SELECT * FROM player_pets WHERE id = ? AND user_id = ?",
+            (pet_id, user_id)
+        )
+
+        if not row:
+            raise PetNotFoundError("灵宠不存在")
+
+        player_pet = PlayerPet.from_db_row(dict(row))
+        player_pet.pet_template = await self._get_pet_template(player_pet.pet_id)
+
+        # 检查亲密度是否已满
+        if player_pet.intimacy >= 100:
+            return {
+                'success': False,
+                'message': f"{player_pet.pet_name}的亲密度已经达到上限了！"
+            }
+
+        # 获取玩家信息
+        player = await self.player_mgr.get_player_or_error(user_id)
+
+        # 计算消耗和亲密度增加
+        if item_type == "spirit_stone":
+            # 使用灵石喂养
+            cost = 50 * (player_pet.level + 1)  # 消耗随等级增加
+            intimacy_gain = random.randint(3, 8)  # 随机增加3-8点亲密度
+
+            if player.spirit_stone < cost:
+                raise ValueError(f"灵石不足！需要 {cost} 灵石")
+
+            # 扣除灵石
+            await self.db.execute(
+                "UPDATE players SET spirit_stone = spirit_stone - ? WHERE user_id = ?",
+                (cost, user_id)
+            )
+
+            item_name = f"{cost}灵石"
+
+        else:
+            # 未来可以扩展其他喂养物品
+            return {
+                'success': False,
+                'message': "暂不支持该类型的喂养物品"
+            }
+
+        # 更新亲密度
+        new_intimacy = min(100, player_pet.intimacy + intimacy_gain)
+        old_intimacy_level = player_pet.get_intimacy_level()
+
+        await self.db.execute(
+            "UPDATE player_pets SET intimacy = ?, updated_at = ? WHERE id = ?",
+            (new_intimacy, datetime.now().isoformat(), pet_id)
+        )
+
+        # 更新后重新获取
+        player_pet.intimacy = new_intimacy
+        new_intimacy_level = player_pet.get_intimacy_level()
+
+        # 检查是否提升了亲密度等级
+        level_up = old_intimacy_level != new_intimacy_level
+
+        result = {
+            'success': True,
+            'intimacy_gain': intimacy_gain,
+            'current_intimacy': new_intimacy,
+            'intimacy_level': new_intimacy_level,
+            'level_up': level_up,
+            'cost': item_name,
+            'message': f"使用 {item_name} 喂养了 {player_pet.pet_name}，"
+                      f"亲密度 +{intimacy_gain}（当前: {new_intimacy}/100）"
+        }
+
+        if level_up:
+            result['message'] += f"\n🎉 亲密度等级提升至【{new_intimacy_level}】！"
+
+        logger.info(f"玩家 {user_id} 喂养了灵宠 {player_pet.pet_name}，亲密度: {new_intimacy}")
+
+        return result
+
+    async def train_pet(self, user_id: str, pet_id: int) -> Dict[str, Any]:
+        """
+        训练灵宠，提升经验
+
+        Args:
+            user_id: 用户ID
+            pet_id: 玩家灵宠ID
+
+        Returns:
+            训练结果字典
+
+        Raises:
+            PetNotFoundError: 灵宠不存在
+            ValueError: 灵石不足或已达最大等级
+        """
+        # 获取灵宠
+        row = await self.db.fetchone(
+            "SELECT * FROM player_pets WHERE id = ? AND user_id = ?",
+            (pet_id, user_id)
+        )
+
+        if not row:
+            raise PetNotFoundError("灵宠不存在")
+
+        player_pet = PlayerPet.from_db_row(dict(row))
+        player_pet.pet_template = await self._get_pet_template(player_pet.pet_id)
+
+        # 检查是否已达最大等级
+        if player_pet.level >= player_pet.pet_template.max_level:
+            return {
+                'success': False,
+                'message': f"{player_pet.pet_name}已达到最大等级 {player_pet.pet_template.max_level}！"
+            }
+
+        # 获取玩家信息
+        player = await self.player_mgr.get_player_or_error(user_id)
+
+        # 计算训练消耗和经验增加
+        cost = 100 * (player_pet.level + 1)  # 消耗随等级增加
+        exp_gain = int(50 * player_pet.pet_template.growth_rate * (1 + random.random()))  # 经验增加受成长率影响
+
+        if player.spirit_stone < cost:
+            raise ValueError(f"灵石不足！需要 {cost} 灵石")
+
+        # 扣除灵石
+        await self.db.execute(
+            "UPDATE players SET spirit_stone = spirit_stone - ? WHERE user_id = ?",
+            (cost, user_id)
+        )
+
+        # 更新经验
+        new_exp = player_pet.experience + exp_gain
+        old_level = player_pet.level
+
+        # 更新数据库
+        await self.db.execute(
+            "UPDATE player_pets SET experience = ?, updated_at = ? WHERE id = ?",
+            (new_exp, datetime.now().isoformat(), pet_id)
+        )
+
+        # 更新后重新获取
+        player_pet.experience = new_exp
+
+        result = {
+            'success': True,
+            'exp_gain': exp_gain,
+            'current_exp': new_exp,
+            'next_level_exp': player_pet.get_next_level_exp(),
+            'cost': cost,
+            'message': f"训练了 {player_pet.pet_name}，"
+                      f"经验 +{exp_gain}（当前: {new_exp}/{player_pet.get_next_level_exp()}）"
+        }
+
+        logger.info(f"玩家 {user_id} 训练了灵宠 {player_pet.pet_name}，经验: {new_exp}")
+
+        return result
+
+    async def level_up_pet(self, user_id: str, pet_id: int) -> Dict[str, Any]:
+        """
+        灵宠升级
+
+        Args:
+            user_id: 用户ID
+            pet_id: 玩家灵宠ID
+
+        Returns:
+            升级结果字典
+
+        Raises:
+            PetNotFoundError: 灵宠不存在
+            ValueError: 经验不足或已达最大等级
+        """
+        # 获取灵宠
+        row = await self.db.fetchone(
+            "SELECT * FROM player_pets WHERE id = ? AND user_id = ?",
+            (pet_id, user_id)
+        )
+
+        if not row:
+            raise PetNotFoundError("灵宠不存在")
+
+        player_pet = PlayerPet.from_db_row(dict(row))
+        player_pet.pet_template = await self._get_pet_template(player_pet.pet_id)
+
+        # 检查是否可以升级
+        if not player_pet.can_level_up():
+            if player_pet.level >= player_pet.pet_template.max_level:
+                return {
+                    'success': False,
+                    'message': f"{player_pet.pet_name}已达到最大等级 {player_pet.pet_template.max_level}！"
+                }
+            else:
+                return {
+                    'success': False,
+                    'message': f"经验不足！需要 {player_pet.get_next_level_exp()} 经验，"
+                              f"当前 {player_pet.experience} 经验"
+                }
+
+        # 升级
+        new_level = player_pet.level + 1
+        remaining_exp = player_pet.experience - player_pet.get_next_level_exp()
+
+        await self.db.execute(
+            "UPDATE player_pets SET level = ?, experience = ?, updated_at = ? WHERE id = ?",
+            (new_level, remaining_exp, datetime.now().isoformat(), pet_id)
+        )
+
+        result = {
+            'success': True,
+            'old_level': player_pet.level,
+            'new_level': new_level,
+            'remaining_exp': remaining_exp,
+            'message': f"🎉 {player_pet.pet_name} 升级了！\n"
+                      f"等级: {player_pet.level} → {new_level}\n"
+                      f"剩余经验: {remaining_exp}"
+        }
+
+        # 检查是否可以继续升级
+        player_pet.level = new_level
+        player_pet.experience = remaining_exp
+        if player_pet.can_level_up():
+            result['can_continue'] = True
+            result['message'] += "\n\n经验充足，可以继续升级！"
+
+        logger.info(f"玩家 {user_id} 的灵宠 {player_pet.pet_name} 升级至 {new_level} 级")
+
+        return result
+
+    async def evolve_pet(self, user_id: str, pet_id: int) -> Dict[str, Any]:
+        """
+        灵宠进化
+
+        Args:
+            user_id: 用户ID
+            pet_id: 玩家灵宠ID
+
+        Returns:
+            进化结果字典
+
+        Raises:
+            PetNotFoundError: 灵宠不存在或无法进化
+            ValueError: 条件不满足或灵石不足
+        """
+        # 获取灵宠
+        row = await self.db.fetchone(
+            "SELECT * FROM player_pets WHERE id = ? AND user_id = ?",
+            (pet_id, user_id)
+        )
+
+        if not row:
+            raise PetNotFoundError("灵宠不存在")
+
+        player_pet = PlayerPet.from_db_row(dict(row))
+        player_pet.pet_template = await self._get_pet_template(player_pet.pet_id)
+
+        # 检查是否可以进化
+        if not player_pet.pet_template.evolution_to:
+            return {
+                'success': False,
+                'message': f"{player_pet.pet_name}无法进化！"
+            }
+
+        # 获取进化后的灵宠模板
+        evolved_template = await self._get_pet_template(player_pet.pet_template.evolution_to)
+        if not evolved_template:
+            raise PetNotFoundError(f"进化目标灵宠 {player_pet.pet_template.evolution_to} 不存在")
+
+        # 检查进化条件
+        min_level = int(player_pet.pet_template.max_level * 0.8)  # 需要达到最大等级的80%
+        min_intimacy = 80  # 需要80点亲密度
+
+        conditions_met = True
+        missing_conditions = []
+
+        if player_pet.level < min_level:
+            conditions_met = False
+            missing_conditions.append(f"等级不足（需要 {min_level}，当前 {player_pet.level}）")
+
+        if player_pet.intimacy < min_intimacy:
+            conditions_met = False
+            missing_conditions.append(f"亲密度不足（需要 {min_intimacy}，当前 {player_pet.intimacy}）")
+
+        if not conditions_met:
+            return {
+                'success': False,
+                'message': f"进化条件不满足：\n" + "\n".join(missing_conditions)
+            }
+
+        # 获取玩家信息
+        player = await self.player_mgr.get_player_or_error(user_id)
+
+        # 计算进化消耗
+        evolution_cost = 5000 * (player_pet.level // 10 + 1)  # 进化消耗随等级增加
+
+        if player.spirit_stone < evolution_cost:
+            raise ValueError(f"灵石不足！需要 {evolution_cost} 灵石")
+
+        # 扣除灵石
+        await self.db.execute(
+            "UPDATE players SET spirit_stone = spirit_stone - ? WHERE user_id = ?",
+            (evolution_cost, user_id)
+        )
+
+        # 进行进化
+        # 保持当前等级，经验归零，亲密度保留一半
+        new_intimacy = player_pet.intimacy // 2
+        old_name = player_pet.pet_name
+        old_template_name = player_pet.pet_template.name
+
+        await self.db.execute(
+            """
+            UPDATE player_pets
+            SET pet_id = ?, pet_name = ?, experience = 0, intimacy = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (
+                evolved_template.id,
+                evolved_template.name,
+                new_intimacy,
+                datetime.now().isoformat(),
+                pet_id
+            )
+        )
+
+        result = {
+            'success': True,
+            'old_pet_name': old_template_name,
+            'new_pet_name': evolved_template.name,
+            'old_rarity': player_pet.pet_template.rarity,
+            'new_rarity': evolved_template.rarity,
+            'cost': evolution_cost,
+            'message': f"✨ 恭喜！{old_name} 成功进化！\n\n"
+                      f"{player_pet.pet_template.get_rarity_color()}{old_template_name} "
+                      f"→ {evolved_template.get_rarity_color()}{evolved_template.name}\n\n"
+                      f"稀有度: {player_pet.pet_template.rarity} → {evolved_template.rarity}\n"
+                      f"最大等级: {player_pet.pet_template.max_level} → {evolved_template.max_level}\n"
+                      f"成长率: {player_pet.pet_template.growth_rate} → {evolved_template.growth_rate}\n\n"
+                      f"💰 消耗: {evolution_cost} 灵石\n"
+                      f"💖 亲密度保留: {new_intimacy}/100"
+        }
+
+        logger.info(f"玩家 {user_id} 的灵宠 {old_name} 进化成 {evolved_template.name}")
+
+        return result

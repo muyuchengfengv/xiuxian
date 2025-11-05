@@ -519,21 +519,30 @@ class CombatSystem:
 
         # 6. 战斗结果
         lines.append("")
-        if combat_log and combat_log[-1].get('winner'):
-            winner_id = combat_log[-1]['winner']
+
+        # 获取最终HP - 需要根据日志类型和user_id判断
+        last_log = combat_log[-1]
+        last_round_attacker_id = last_log.get('attacker_id')
+
+        # 如果最后一条日志没有attacker_id（如timeout类型），则HP已经对应原始attacker/defender
+        # 如果有attacker_id，需要根据ID判断HP对应关系
+        if last_round_attacker_id is None:
+            # timeout类型，HP已经正确对应
+            final_attacker_hp = last_log.get('attacker_hp', 0)
+            final_defender_hp = last_log.get('defender_hp', 0)
+        elif last_round_attacker_id == attacker.user_id:
+            # 当前回合攻击者是原始attacker
+            final_attacker_hp = last_log.get('attacker_hp', 0)
+            final_defender_hp = last_log.get('defender_hp', 0)
+        else:
+            # 当前回合攻击者是原始defender（已交换）
+            final_attacker_hp = last_log.get('defender_hp', 0)
+            final_defender_hp = last_log.get('attacker_hp', 0)
+
+        if combat_log and last_log.get('winner'):
+            winner_id = last_log['winner']
             winner_name = attacker.name if winner_id == attacker.user_id else defender.name
             loser_name = defender.name if winner_id == attacker.user_id else attacker.name
-
-            # 获取最终HP - 需要根据user_id判断
-            last_log = combat_log[-1]
-            last_round_attacker_id = last_log.get('attacker_id')
-
-            if last_round_attacker_id == attacker.user_id:
-                final_attacker_hp = last_log.get('attacker_hp', 0)
-                final_defender_hp = last_log.get('defender_hp', 0)
-            else:
-                final_attacker_hp = last_log.get('defender_hp', 0)
-                final_defender_hp = last_log.get('attacker_hp', 0)
 
             lines.append("🏆 战斗结果")
             lines.append("─" * 40)
@@ -548,17 +557,6 @@ class CombatSystem:
             lines.append(f"   {defender.name}: {final_defender_hp}/{defender.max_hp} HP")
             lines.append(f"   {defender_final_bar}")
         else:
-            # 平局情况 - 也需要根据user_id判断
-            last_log = combat_log[-1]
-            last_round_attacker_id = last_log.get('attacker_id')
-
-            if last_round_attacker_id == attacker.user_id:
-                final_attacker_hp = last_log.get('attacker_hp', 0)
-                final_defender_hp = last_log.get('defender_hp', 0)
-            else:
-                final_attacker_hp = last_log.get('defender_hp', 0)
-                final_defender_hp = last_log.get('attacker_hp', 0)
-
             lines.append("🤝 战斗结果：平局")
             lines.append("")
             lines.append(f"💚 最终状态：")

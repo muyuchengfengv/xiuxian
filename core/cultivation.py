@@ -55,6 +55,7 @@ class CultivationSystem:
         self.cooldown_seconds = DEFAULT_CULTIVATION_COOLDOWN  # 默认1小时
         self.sect_sys = None  # 宗门系统（可选）
         self.pet_sys = None  # 灵宠系统（可选）
+        self.world_mgr = None  # 世界系统（可选）
 
     def set_cooldown(self, seconds: int):
         """
@@ -83,6 +84,15 @@ class CultivationSystem:
             pet_sys: 灵宠系统实例
         """
         self.pet_sys = pet_sys
+
+    def set_world_manager(self, world_mgr):
+        """
+        设置世界系统（用于地点灵气加成计算）
+
+        Args:
+            world_mgr: 世界管理器实例
+        """
+        self.world_mgr = world_mgr
 
     async def cultivate(self, user_id: str) -> Dict:
         """
@@ -139,6 +149,24 @@ class CultivationSystem:
                 # 如果灵宠加成失败，记录日志但不影响修炼
                 logger.warning(f"应用灵宠加成失败: {e}")
 
+        # 3.7 应用地点灵气加成
+        location_bonus_rate = 0.0
+        location_name = "未知"
+        if self.world_mgr:
+            try:
+                location, _ = await self.world_mgr.get_player_location(user_id)
+                if location:
+                    location_name = location.name
+                    # 灵气浓度转换为加成：基准50，每高10点增加10%修炼速度
+                    # 例如：灵气20 → -30%，灵气50 → 0%，灵气100 → +50%
+                    location_bonus_rate = (location.spirit_energy_density - 50) / 100.0
+                    if location_bonus_rate != 0:
+                        cultivation_gained = cultivation_gained * (1 + location_bonus_rate)
+                        logger.debug(f"应用地点加成 [{location_name}]: {location_bonus_rate*100:+.1f}%")
+            except Exception as e:
+                # 如果地点加成失败，记录日志但不影响修炼
+                logger.warning(f"应用地点加成失败: {e}")
+
         # 4. 更新玩家数据
         player.cultivation += int(cultivation_gained)
         player.last_cultivation = datetime.now()
@@ -151,12 +179,16 @@ class CultivationSystem:
 
         logger.info(
             f"玩家 {player.name} 修炼完成: "
-            f"获得修为 {int(cultivation_gained)} (宗门加成: {sect_bonus_rate*100:.0f}%, 灵宠加成: {pet_bonus_rate*100:.0f}%), "
+            f"获得修为 {int(cultivation_gained)} "
+            f"(宗门加成: {sect_bonus_rate*100:.0f}%, 灵宠加成: {pet_bonus_rate*100:.0f}%, "
+            f"地点加成: {location_bonus_rate*100:+.0f}%), "
             f"总修为 {player.cultivation}"
         )
 
         return {
             'cultivation_gained': int(cultivation_gained),
+            'location_bonus_rate': location_bonus_rate,
+            'location_name': location_name,
             'sect_bonus_rate': sect_bonus_rate,
             'pet_bonus_rate': pet_bonus_rate,
             'total_cultivation': player.cultivation,

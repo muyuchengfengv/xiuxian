@@ -224,32 +224,28 @@ class WorldManager:
 
         results = {
             'location': location,
+            'event': None,  # 触发的事件（需要玩家选择）
             'discoveries': [],
             'encounters': [],
-            'rewards': {}
+            'rewards': {},
+            'has_choice': False  # 是否需要玩家做出选择
         }
 
-        # 探索可能的发现
-        discovery_chance = 0.3 + (location.spirit_energy_density / 500.0)
+        # 探索触发事件概率（基于地点危险等级和灵气浓度）
+        event_chance = 0.4 + (location.danger_level * 0.05) + (location.spirit_energy_density / 1000.0)
 
-        if random.random() < discovery_chance:
-            # 发现了什么
-            discovery_type = random.choice(['resource', 'hidden_path', 'secret'])
+        if random.random() < event_chance:
+            # 触发探索事件
+            event = await self._generate_exploration_event(user_id, location, player)
+            results['event'] = event
 
-            if discovery_type == 'resource':
-                # 发现资源（灵石、材料等）
-                spirit_stone_found = random.randint(10, 50) * location.danger_level
-                results['discoveries'].append({
-                    'type': 'resource',
-                    'description': f'发现了 {spirit_stone_found} 灵石',
-                    'reward': {'spirit_stone': spirit_stone_found}
-                })
-                results['rewards']['spirit_stone'] = spirit_stone_found
-
-        # 可能遭遇危险/机遇
-        encounter = await self._try_trigger_encounter(user_id, location)
-        if encounter:
-            results['encounters'].append(encounter)
+            if event.get('has_choice'):
+                # 需要玩家选择
+                results['has_choice'] = True
+            else:
+                # 自动结算的事件
+                if 'auto_result' in event:
+                    results.update(event['auto_result'])
 
         return results
 
@@ -396,3 +392,381 @@ class WorldManager:
         ])
 
         return "\n".join(lines)
+
+    async def _generate_exploration_event(self, user_id: str, location: Location, player: Player) -> Dict:
+        """
+        生成探索事件
+
+        Returns:
+            事件信息字典
+        """
+        # 根据地点危险等级和灵气浓度选择事件类型
+        event_types = []
+
+        # 基础事件（所有地点都可能出现）
+        event_types.extend(['resource_find', 'cultivation_insight', 'mysterious_npc'])
+
+        # 根据危险等级添加不同事件
+        if location.danger_level >= 3:
+            event_types.extend(['monster_encounter', 'treasure_chest', 'ancient_ruin'])
+
+        if location.danger_level >= 5:
+            event_types.extend(['dangerous_trap', 'powerful_cultivator', 'secret_realm_entrance'])
+
+        if location.danger_level >= 7:
+            event_types.extend(['heaven_material', 'ancient_inheritance', 'spatial_anomaly'])
+
+        # 根据灵气浓度添加事件
+        if location.spirit_energy_density >= 60:
+            event_types.extend(['spirit_spring', 'rare_herb'])
+
+        event_type = random.choice(event_types)
+
+        # 生成对应的事件
+        event_generators = {
+            'resource_find': self._event_resource_find,
+            'cultivation_insight': self._event_cultivation_insight,
+            'mysterious_npc': self._event_mysterious_npc,
+            'monster_encounter': self._event_monster_encounter,
+            'treasure_chest': self._event_treasure_chest,
+            'ancient_ruin': self._event_ancient_ruin,
+            'dangerous_trap': self._event_dangerous_trap,
+            'powerful_cultivator': self._event_powerful_cultivator,
+            'secret_realm_entrance': self._event_secret_realm,
+            'heaven_material': self._event_heaven_material,
+            'ancient_inheritance': self._event_ancient_inheritance,
+            'spatial_anomaly': self._event_spatial_anomaly,
+            'spirit_spring': self._event_spirit_spring,
+            'rare_herb': self._event_rare_herb,
+        }
+
+        generator = event_generators.get(event_type, self._event_resource_find)
+        return await generator(user_id, location, player)
+
+    async def _event_resource_find(self, user_id: str, location: Location, player: Player) -> Dict:
+        """事件：发现资源"""
+        spirit_stone = random.randint(50, 200) * location.danger_level
+        return {
+            'type': 'resource_find',
+            'title': '💎 发现资源',
+            'description': f'在探索过程中，你发现了一处灵石矿脉的遗迹！',
+            'has_choice': False,
+            'auto_result': {
+                'rewards': {'spirit_stone': spirit_stone},
+                'message': f'获得了 {spirit_stone} 灵石！'
+            }
+        }
+
+    async def _event_cultivation_insight(self, user_id: str, location: Location, player: Player) -> Dict:
+        """事件：修炼顿悟"""
+        cultivation_gain = random.randint(100, 300) * (1 + location.spirit_energy_density / 100)
+        return {
+            'type': 'cultivation_insight',
+            'title': '✨ 修炼顿悟',
+            'description': f'在{location.name}的灵气环境中，你突然有所感悟！',
+            'has_choice': False,
+            'auto_result': {
+                'rewards': {'cultivation': int(cultivation_gain)},
+                'message': f'获得了 {int(cultivation_gain)} 修为！'
+            }
+        }
+
+    async def _event_mysterious_npc(self, user_id: str, location: Location, player: Player) -> Dict:
+        """事件：神秘NPC"""
+        choices = [
+            {
+                'id': 'talk',
+                'text': '上前交谈',
+                'description': '可能获得情报或任务'
+            },
+            {
+                'id': 'trade',
+                'text': '进行交易',
+                'description': '花费灵石购买物品'
+            },
+            {
+                'id': 'ignore',
+                'text': '离开',
+                'description': '无事发生'
+            }
+        ]
+
+        return {
+            'type': 'mysterious_npc',
+            'title': '🧙 神秘修士',
+            'description': '你遇到了一位神秘的修士，他似乎有话要说...',
+            'has_choice': True,
+            'choices': choices,
+            'event_data': {
+                'npc_level': location.danger_level,
+                'location_id': location.id
+            }
+        }
+
+    async def _event_monster_encounter(self, user_id: str, location: Location, player: Player) -> Dict:
+        """事件：妖兽遭遇"""
+        monster_level = location.danger_level + random.randint(-1, 2)
+        choices = [
+            {
+                'id': 'fight',
+                'text': '战斗',
+                'description': f'与 {monster_level} 阶妖兽战斗，胜利可获得丰厚奖励'
+            },
+            {
+                'id': 'flee',
+                'text': '逃跑',
+                'description': '消耗灵石逃离，保证安全'
+            }
+        ]
+
+        return {
+            'type': 'monster_encounter',
+            'title': '⚔️ 妖兽袭击',
+            'description': f'你遭遇了一只 {monster_level} 阶妖兽！',
+            'has_choice': True,
+            'choices': choices,
+            'event_data': {
+                'monster_level': monster_level,
+                'location_danger': location.danger_level
+            }
+        }
+
+    async def _event_treasure_chest(self, user_id: str, location: Location, player: Player) -> Dict:
+        """事件：宝箱"""
+        choices = [
+            {
+                'id': 'open_direct',
+                'text': '直接打开',
+                'description': '可能触发陷阱，但也可能直接获得宝物'
+            },
+            {
+                'id': 'open_careful',
+                'text': '小心打开',
+                'description': '花费时间仔细检查，更安全但奖励可能减少'
+            },
+            {
+                'id': 'ignore',
+                'text': '不打开',
+                'description': '离开宝箱'
+            }
+        ]
+
+        return {
+            'type': 'treasure_chest',
+            'title': '📦 神秘宝箱',
+            'description': '你发现了一个古老的宝箱，散发着微弱的灵光...',
+            'has_choice': True,
+            'choices': choices,
+            'event_data': {
+                'chest_quality': location.danger_level,
+                'trap_chance': location.danger_level * 0.1
+            }
+        }
+
+    async def _event_ancient_ruin(self, user_id: str, location: Location, player: Player) -> Dict:
+        """事件：古代遗迹"""
+        choices = [
+            {
+                'id': 'explore',
+                'text': '探索遗迹',
+                'description': '可能发现珍贵功法或宝物，但有危险'
+            },
+            {
+                'id': 'mark',
+                'text': '标记位置后离开',
+                'description': '记录位置，日后再来'
+            }
+        ]
+
+        return {
+            'type': 'ancient_ruin',
+            'title': '🏛️ 古代遗迹',
+            'description': '你发现了一处古代修士的洞府遗迹！',
+            'has_choice': True,
+            'choices': choices,
+            'event_data': {
+                'ruin_level': location.danger_level,
+                'location_id': location.id
+            }
+        }
+
+    async def _event_dangerous_trap(self, user_id: str, location: Location, player: Player) -> Dict:
+        """事件：危险陷阱"""
+        damage = random.randint(50, 200) * location.danger_level
+        dodge_chance = min(0.8, player.luck / 100 + 0.2)
+
+        if random.random() < dodge_chance:
+            return {
+                'type': 'dangerous_trap',
+                'title': '⚠️ 陷阱',
+                'description': f'你凭借敏锐的感知，成功避开了一处危险的阵法陷阱！',
+                'has_choice': False,
+                'auto_result': {
+                    'message': '幸运地躲过了陷阱！'
+                }
+            }
+        else:
+            return {
+                'type': 'dangerous_trap',
+                'title': '💥 触发陷阱',
+                'description': f'你不慎触发了古代阵法，受到了攻击！',
+                'has_choice': False,
+                'auto_result': {
+                    'damage': damage,
+                    'message': f'受到了 {damage} 点伤害！'
+                }
+            }
+
+    async def _event_powerful_cultivator(self, user_id: str, location: Location, player: Player) -> Dict:
+        """事件：强大修士"""
+        choices = [
+            {
+                'id': 'greet',
+                'text': '礼貌问候',
+                'description': '可能获得指点或物品'
+            },
+            {
+                'id': 'challenge',
+                'text': '请求切磋',
+                'description': '胜利可获得经验，失败会受伤'
+            },
+            {
+                'id': 'avoid',
+                'text': '避开',
+                'description': '无事发生'
+            }
+        ]
+
+        return {
+            'type': 'powerful_cultivator',
+            'title': '👤 强大修士',
+            'description': f'你遇到了一位气息强大的修士，他的修为远超于你...',
+            'has_choice': True,
+            'choices': choices,
+            'event_data': {
+                'cultivator_realm': location.min_realm,
+                'friendly': random.random() > 0.3
+            }
+        }
+
+    async def _event_secret_realm(self, user_id: str, location: Location, player: Player) -> Dict:
+        """事件：秘境入口"""
+        choices = [
+            {
+                'id': 'enter',
+                'text': '进入秘境',
+                'description': '机遇与危险并存'
+            },
+            {
+                'id': 'later',
+                'text': '标记后离开',
+                'description': '等实力提升后再来'
+            }
+        ]
+
+        return {
+            'type': 'secret_realm',
+            'title': '🌀 秘境入口',
+            'description': '空间扭曲，一个神秘的秘境入口出现在你面前！',
+            'has_choice': True,
+            'choices': choices,
+            'event_data': {
+                'realm_level': location.danger_level,
+                'min_realm': location.min_realm
+            }
+        }
+
+    async def _event_heaven_material(self, user_id: str, location: Location, player: Player) -> Dict:
+        """事件：天材地宝"""
+        material_value = random.randint(500, 2000) * location.danger_level
+        return {
+            'type': 'heaven_material',
+            'title': '🌟 天材地宝',
+            'description': f'你发现了一株罕见的天材地宝！',
+            'has_choice': False,
+            'auto_result': {
+                'rewards': {'spirit_stone': material_value},
+                'message': f'采集了珍贵的天材地宝，价值 {material_value} 灵石！'
+            }
+        }
+
+    async def _event_ancient_inheritance(self, user_id: str, location: Location, player: Player) -> Dict:
+        """事件：古代传承"""
+        choices = [
+            {
+                'id': 'accept',
+                'text': '接受传承',
+                'description': '可能获得强大功法，但需要通过考验'
+            },
+            {
+                'id': 'decline',
+                'text': '放弃',
+                'description': '放弃这次机会'
+            }
+        ]
+
+        return {
+            'type': 'ancient_inheritance',
+            'title': '📜 古代传承',
+            'description': '你触发了一个古代修士留下的传承！',
+            'has_choice': True,
+            'choices': choices,
+            'event_data': {
+                'inheritance_quality': location.danger_level,
+                'test_difficulty': location.danger_level
+            }
+        }
+
+    async def _event_spatial_anomaly(self, user_id: str, location: Location, player: Player) -> Dict:
+        """事件：空间异常"""
+        choices = [
+            {
+                'id': 'investigate',
+                'text': '调查',
+                'description': '可能获得空间类宝物'
+            },
+            {
+                'id': 'avoid',
+                'text': '远离',
+                'description': '避免危险'
+            }
+        ]
+
+        return {
+            'type': 'spatial_anomaly',
+            'title': '🌌 空间异常',
+            'description': '空间出现了不稳定的波动，似乎隐藏着什么...',
+            'has_choice': True,
+            'choices': choices,
+            'event_data': {
+                'anomaly_level': location.danger_level
+            }
+        }
+
+    async def _event_spirit_spring(self, user_id: str, location: Location, player: Player) -> Dict:
+        """事件：灵泉"""
+        cultivation_boost = random.randint(200, 500) * (location.spirit_energy_density / 50)
+        return {
+            'type': 'spirit_spring',
+            'title': '💧 灵泉',
+            'description': '你发现了一处灵泉，泉水蕴含浓郁的灵气！',
+            'has_choice': False,
+            'auto_result': {
+                'rewards': {'cultivation': int(cultivation_boost)},
+                'message': f'饮用灵泉水后，修为增长 {int(cultivation_boost)}！'
+            }
+        }
+
+    async def _event_rare_herb(self, user_id: str, location: Location, player: Player) -> Dict:
+        """事件：稀有灵药"""
+        herb_value = random.randint(300, 1000) * (location.spirit_energy_density / 50)
+        return {
+            'type': 'rare_herb',
+            'title': '🌿 稀有灵药',
+            'description': '你发现了一株稀有的灵药，散发着浓郁的药香！',
+            'has_choice': False,
+            'auto_result': {
+                'rewards': {'spirit_stone': int(herb_value)},
+                'message': f'采集了稀有灵药，价值 {int(herb_value)} 灵石！'
+            }
+        }
