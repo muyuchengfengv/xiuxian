@@ -113,6 +113,9 @@ class XiuxianPlugin(Star):
         # 探索事件临时存储 {user_id: event_data}
         self._exploration_events = {}
 
+        # 探索会话管理 {user_id: session_data}
+        self._exploration_sessions = {}
+
         logger.info("修仙世界插件已加载 (使用懒加载模式)")
 
     @filter.on_astrbot_loaded()
@@ -3266,6 +3269,48 @@ class XiuxianPlugin(Star):
             logger.error(f"查看天劫统计失败: {e}", exc_info=True)
             yield event.plain_result(f"查看天劫统计失败：{str(e)}")
 
+    # ========== 探索会话管理辅助方法 ==========
+
+    def _create_exploration_session(self, user_id: str, location) -> Dict:
+        """创建探索会话"""
+        import time
+        session = {
+            'user_id': user_id,
+            'start_time': time.time(),
+            'last_activity_time': time.time(),
+            'location': location,
+            'round': 1,
+            'max_rounds': 5,  # 最多5轮
+            'status': 'active',
+            'story_history': []
+        }
+        self._exploration_sessions[user_id] = session
+        return session
+
+    def _get_exploration_session(self, user_id: str) -> Optional[Dict]:
+        """获取探索会话"""
+        import time
+        session = self._exploration_sessions.get(user_id)
+        if session:
+            # 检查是否超时（120秒）
+            if time.time() - session['last_activity_time'] > 120:
+                self._end_exploration_session(user_id)
+                return None
+        return session
+
+    def _update_session_activity(self, user_id: str):
+        """更新会话活动时间"""
+        import time
+        if user_id in self._exploration_sessions:
+            self._exploration_sessions[user_id]['last_activity_time'] = time.time()
+
+    def _end_exploration_session(self, user_id: str):
+        """结束探索会话"""
+        if user_id in self._exploration_sessions:
+            del self._exploration_sessions[user_id]
+        if user_id in self._exploration_events:
+            del self._exploration_events[user_id]
+
     # ========== 世界探索系统命令 ==========
 
     @filter.command("地点", alias={"locations", "where", "位置"})
@@ -3390,10 +3435,24 @@ class XiuxianPlugin(Star):
                 yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
                 return
 
+            # 检查是否有进行中的探索会话
+            existing_session = self._get_exploration_session(user_id)
+            if existing_session and existing_session['status'] == 'active':
+                yield event.plain_result(
+                    f"⚠️ 你正在 {existing_session['location'].name} 探索中！\n\n"
+                    f"📍 当前轮次：{existing_session['round']}/{existing_session['max_rounds']}\n"
+                    f"💡 请先完成当前的选择，或使用 /结束探索 结束当前探索"
+                )
+                return
+
             result = await self.world_mgr.explore_current_location(user_id)
+            location = result['location']
+
+            # 创建新的探索会话
+            session = self._create_exploration_session(user_id, location)
 
             lines = [
-                f"🔍 探索 {result['location'].name}",
+                f"🔍 开始探索 {location.name}",
                 "─" * 40,
                 ""
             ]
@@ -3401,24 +3460,28 @@ class XiuxianPlugin(Star):
             # 如果有事件
             if result.get('event'):
                 event_info = result['event']
-                lines.append(f"{event_info['title']}")
+                lines.append(f"📖 {event_info['title']}")
                 lines.append("")
                 lines.append(event_info['description'])
                 lines.append("")
 
                 # 如果需要玩家做出选择
                 if result.get('has_choice') and event_info.get('choices'):
-                    lines.append("请选择你的行动：")
+                    lines.append("🎯 请选择你的行动：")
                     for i, choice in enumerate(event_info['choices'], 1):
                         lines.append(f"{i}. {choice['text']} - {choice['description']}")
+
+                    # 添加"结束探索"选项
+                    lines.append(f"{len(event_info['choices']) + 1}. 🚪 结束探索 - 离开此地")
                     lines.append("")
-                    lines.append("💡 使用 /选择 [编号] 做出选择")
-                    lines.append(f"   例如：/选择 1")
+                    lines.append(f"💡 使用 /选择 [编号] 做出选择 (例如：/选择 1)")
+                    lines.append(f"⏱️ 120秒内无操作将自动结束探索")
 
                     # 暂存事件数据供后续选择使用
                     self._exploration_events[user_id] = {
                         'event': event_info,
-                        'location': result['location']
+                        'location': location,
+                        'session': session
                     }
                 else:
                     # 自动结算的事件
@@ -3480,6 +3543,12 @@ class XiuxianPlugin(Star):
                 yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
                 return
 
+            # 检查会话是否超时
+            session = self._get_exploration_session(user_id)
+            if not session:
+                yield event.plain_result("⚠️ 探索会话已超时\n\n💡 使用 /探索 重新开始探索")
+                return
+
             # 检查是否有待选择的事件
             if user_id not in self._exploration_events:
                 yield event.plain_result("⚠️ 当前没有需要选择的事件\n\n💡 使用 /探索 开始探索")
@@ -3492,7 +3561,7 @@ class XiuxianPlugin(Star):
                 return
 
             try:
-                choice_index = int(parts[1]) - 1
+                choice_num = int(parts[1])
             except ValueError:
                 yield event.plain_result("⚠️ 请输入有效的编号！")
                 return
@@ -3503,12 +3572,28 @@ class XiuxianPlugin(Star):
             location = event_data['location']
             choices = event_info.get('choices', [])
 
+            # 检查是否选择了"结束探索"
+            num_story_choices = len(choices)
+            if choice_num == num_story_choices + 1:
+                # 玩家选择结束探索
+                self._end_exploration_session(user_id)
+                yield event.plain_result(
+                    "🚪 你结束了这次探索，离开了此地\n\n"
+                    f"📍 本次探索轮次：{session['round']}/{session['max_rounds']}\n"
+                    "💡 使用 /探索 开始新的探索"
+                )
+                return
+
             # 检查选择是否有效
+            choice_index = choice_num - 1
             if choice_index < 0 or choice_index >= len(choices):
-                yield event.plain_result(f"⚠️ 无效的选择编号！请选择 1-{len(choices)}")
+                yield event.plain_result(f"⚠️ 无效的选择编号！请选择 1-{num_story_choices + 1}")
                 return
 
             selected_choice = choices[choice_index]
+
+            # 更新会话活动时间
+            self._update_session_activity(user_id)
 
             # 处理选择结果
             result = await self.world_mgr.handle_event_choice(
@@ -3518,7 +3603,7 @@ class XiuxianPlugin(Star):
                 location
             )
 
-            # 清除已处理的事件
+            # 清除当前事件
             del self._exploration_events[user_id]
 
             # 显示结果
@@ -3528,8 +3613,11 @@ class XiuxianPlugin(Star):
                 ""
             ]
 
-            if result.get('message'):
-                lines.append(result['message'])
+            # 显示结果描述（优先使用 outcome_text，回退到 message）
+            result_text = result.get('outcome_text') or result.get('message')
+            if result_text:
+                lines.append(result_text)
+                lines.append("")
 
             # 发放奖励
             rewards = result.get('rewards', {})
@@ -3572,6 +3660,63 @@ class XiuxianPlugin(Star):
                 )
                 lines.append(f"\n💔 生命值 -{damage}")
 
+            # 检查是否继续探索
+            session['round'] += 1
+            session['story_history'].append({
+                'choice': selected_choice['text'],
+                'result': result_text
+            })
+
+            if session['round'] <= session['max_rounds']:
+                # 继续生成下一轮故事
+                lines.append("")
+                lines.append("─" * 40)
+                lines.append(f"📍 探索继续... (第 {session['round']}/{session['max_rounds']} 轮)")
+                lines.append("")
+
+                # 生成新的故事
+                next_result = await self.world_mgr.explore_current_location(user_id)
+
+                if next_result.get('event'):
+                    next_event_info = next_result['event']
+                    lines.append(f"📖 {next_event_info['title']}")
+                    lines.append("")
+                    lines.append(next_event_info['description'])
+                    lines.append("")
+
+                    if next_result.get('has_choice') and next_event_info.get('choices'):
+                        lines.append("🎯 请选择你的行动：")
+                        for i, choice in enumerate(next_event_info['choices'], 1):
+                            lines.append(f"{i}. {choice['text']} - {choice['description']}")
+
+                        # 添加"结束探索"选项
+                        lines.append(f"{len(next_event_info['choices']) + 1}. 🚪 结束探索 - 离开此地")
+                        lines.append("")
+                        lines.append(f"💡 使用 /选择 [编号] 做出选择")
+                        lines.append(f"⏱️ 120秒内无操作将自动结束探索")
+
+                        # 暂存新的事件数据
+                        self._exploration_events[user_id] = {
+                            'event': next_event_info,
+                            'location': location,
+                            'session': session
+                        }
+                    else:
+                        # 自动结算，探索结束
+                        self._end_exploration_session(user_id)
+                        lines.append("")
+                        lines.append("✅ 探索结束")
+                else:
+                    # 没有新事件，探索结束
+                    self._end_exploration_session(user_id)
+                    lines.append("")
+                    lines.append("✅ 探索结束")
+            else:
+                # 达到最大轮次，探索结束
+                self._end_exploration_session(user_id)
+                lines.append("")
+                lines.append(f"✅ 探索结束 - 已完成全部 {session['max_rounds']} 轮探索")
+
             yield event.plain_result("\n".join(lines))
 
         except PlayerNotFoundError:
@@ -3579,6 +3724,29 @@ class XiuxianPlugin(Star):
         except Exception as e:
             logger.error(f"处理选择失败: {e}", exc_info=True)
             yield event.plain_result(f"处理选择失败：{str(e)}")
+
+    @filter.command("结束探索", alias={"end_explore", "离开"})
+    async def end_exploration_cmd(self, event: AstrMessageEvent):
+        """主动结束当前探索"""
+        user_id = event.get_sender_id()
+
+        try:
+            session = self._get_exploration_session(user_id)
+            if not session:
+                yield event.plain_result("⚠️ 你当前没有进行中的探索")
+                return
+
+            # 结束探索
+            self._end_exploration_session(user_id)
+            yield event.plain_result(
+                "🚪 你结束了这次探索，离开了此地\n\n"
+                f"📍 本次探索轮次：{session['round']}/{session['max_rounds']}\n"
+                "💡 使用 /探索 开始新的探索"
+            )
+
+        except Exception as e:
+            logger.error(f"结束探索失败: {e}", exc_info=True)
+            yield event.plain_result(f"结束探索失败：{str(e)}")
 
     @filter.command("地点详情", alias={"location_info", "地点信息"})
     async def location_info_cmd(self, event: AstrMessageEvent):
