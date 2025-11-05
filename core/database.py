@@ -181,6 +181,12 @@ class DatabaseManager:
                 # 提取列名（第一个词）
                 column_name = column.split()[0]
 
+                # 跳过表级约束（ALTER TABLE ADD COLUMN不支持添加约束）
+                constraint_keywords = ['UNIQUE(', 'PRIMARY', 'FOREIGN', 'CHECK(', 'CONSTRAINT']
+                if any(column.strip().upper().startswith(kw) or column.strip().upper().startswith(kw.replace('(', ' (')) for kw in constraint_keywords):
+                    logger.info(f"跳过表级约束: {column.strip()[:50]}...")
+                    continue
+
                 if column_name not in existing_columns:
                     # 添加缺失的列
                     logger.info(f"为表 {table_name} 添加新列: {column_name}")
