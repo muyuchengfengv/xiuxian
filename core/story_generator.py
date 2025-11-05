@@ -102,16 +102,27 @@ class LLMStoryGenerator:
 
         # 调用LLM
         try:
-            # 尝试通过AstrBot的LLM API获取响应
-            if hasattr(self.context, 'llm_client'):
-                response = await self.context.llm_client.chat_completion(
-                    messages=[{"role": "user", "content": prompt}],
-                    temperature=0.8,
-                    max_tokens=1000
+            # 使用AstrBot的Provider API获取响应
+            if self.context and hasattr(self.context, 'get_using_provider'):
+                # 获取当前使用的大语言模型提供商
+                provider = self.context.get_using_provider()
+
+                # 调用text_chat方法
+                llm_response = await provider.text_chat(
+                    prompt=prompt,
+                    session_id=user_id,
+                    contexts=[],  # 探索故事不需要历史上下文
+                    system_prompt="你是一个修仙世界的故事大师，擅长创作充满想象力和趣味性的修仙探索故事。请严格按照JSON格式返回结果。"
                 )
-                story_data = self._parse_llm_response(response)
+
+                # 获取响应文本
+                if hasattr(llm_response, 'completion_text'):
+                    response_text = llm_response.completion_text
+                    story_data = self._parse_llm_response(response_text)
+                else:
+                    raise Exception("LLM响应格式错误")
             else:
-                raise Exception("LLM客户端不可用")
+                raise Exception("LLM Provider不可用")
         except Exception as e:
             logger.error(f"调用LLM失败: {e}")
             raise StoryGenerationError(f"LLM调用失败: {e}")
@@ -517,15 +528,26 @@ class LLMStoryGenerator:
 }}
 """
 
-        if hasattr(self.context, 'llm_client'):
-            response = await self.context.llm_client.chat_completion(
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.7,
-                max_tokens=800
+        if self.context and hasattr(self.context, 'get_using_provider'):
+            # 获取当前使用的大语言模型提供商
+            provider = self.context.get_using_provider()
+
+            # 调用text_chat方法
+            llm_response = await provider.text_chat(
+                prompt=prompt,
+                session_id=user_id,
+                contexts=[],
+                system_prompt="你是一个修仙世界的故事大师，擅长为玩家的选择生成合理且有趣的结果。请严格按照JSON格式返回结果。"
             )
-            return self._parse_llm_response(response)
+
+            # 获取响应文本
+            if hasattr(llm_response, 'completion_text'):
+                response_text = llm_response.completion_text
+                return self._parse_llm_response(response_text)
+            else:
+                raise Exception("LLM响应格式错误")
         else:
-            raise Exception("LLM不可用")
+            raise Exception("LLM Provider不可用")
 
     async def _generate_template_choice_result(
         self,
