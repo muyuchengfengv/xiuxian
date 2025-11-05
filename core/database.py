@@ -630,6 +630,47 @@ class DatabaseManager:
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         """)
 
+        # 探索故事历史表
+        await self._ensure_table_exists("exploration_stories", """
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            location_id INTEGER NOT NULL,
+            story_type TEXT NOT NULL,
+            story_title TEXT NOT NULL,
+            story_content TEXT NOT NULL,
+            choices TEXT,
+            selected_choice TEXT,
+            outcome TEXT,
+            rewards TEXT,
+            consequences TEXT,
+            is_completed INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            completed_at TIMESTAMP
+        """)
+
+        # 玩家故事状态表（用于跨多次探索的连续剧情）
+        await self._ensure_table_exists("player_story_states", """
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL,
+            story_arc_id TEXT NOT NULL,
+            current_chapter INTEGER DEFAULT 1,
+            total_chapters INTEGER DEFAULT 1,
+            state_data TEXT,
+            last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(user_id, story_arc_id)
+        """)
+
+        # 探索后果记录表（记录玩家选择的长期影响）
+        await self._ensure_table_exists("exploration_consequences", """
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL,
+            story_id TEXT NOT NULL,
+            consequence_type TEXT NOT NULL,
+            consequence_value TEXT NOT NULL,
+            expires_at TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        """)
+
     async def _create_indexes(self):
         """创建索引以优化查询性能"""
         indexes = [
@@ -664,6 +705,12 @@ class DatabaseManager:
             "CREATE INDEX IF NOT EXISTS idx_market_items_seller ON market_items(seller_id)",
             "CREATE INDEX IF NOT EXISTS idx_market_transactions_buyer ON market_transactions(buyer_id)",
             "CREATE INDEX IF NOT EXISTS idx_market_transactions_seller ON market_transactions(seller_id)",
+            "CREATE INDEX IF NOT EXISTS idx_exploration_stories_user ON exploration_stories(user_id)",
+            "CREATE INDEX IF NOT EXISTS idx_exploration_stories_location ON exploration_stories(location_id)",
+            "CREATE INDEX IF NOT EXISTS idx_exploration_stories_completed ON exploration_stories(user_id, is_completed)",
+            "CREATE INDEX IF NOT EXISTS idx_player_story_states_user ON player_story_states(user_id)",
+            "CREATE INDEX IF NOT EXISTS idx_exploration_consequences_user ON exploration_consequences(user_id)",
+            "CREATE INDEX IF NOT EXISTS idx_exploration_consequences_story ON exploration_consequences(story_id)",
         ]
 
         for index_sql in indexes:

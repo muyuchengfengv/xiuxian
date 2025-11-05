@@ -110,6 +110,9 @@ class XiuxianPlugin(Star):
         # 图片生成器
         self.card_generator = None
 
+        # 探索事件临时存储 {user_id: event_data}
+        self._exploration_events = {}
+
         logger.info("修仙世界插件已加载 (使用懒加载模式)")
 
     @filter.on_astrbot_loaded()
@@ -154,7 +157,12 @@ class XiuxianPlugin(Star):
             self.sect_sys = SectSystem(self.db, self.player_mgr)
             self.ai_generator = AIGenerator(self.db, self.player_mgr)
             self.tribulation_sys = TribulationSystem(self.db, self.player_mgr)
-            self.world_mgr = WorldManager(self.db, self.player_mgr)
+
+            # 获取配置
+            enable_ai = self.context.config_helper.get('enable_ai_generation', True)
+
+            # 初始化世界管理器（支持LLM故事生成）
+            self.world_mgr = WorldManager(self.db, self.player_mgr, self.context, enable_ai)
             logger.info("✓ 核心系统初始化完成")
             logger.info("✓ 技能系统初始化完成")
 
@@ -3398,7 +3406,10 @@ class XiuxianPlugin(Star):
                     lines.append(f"   例如：/选择 1")
 
                     # 暂存事件数据供后续选择使用
-                    # TODO: 实现事件数据存储
+                    self._exploration_events[user_id] = {
+                        'event': event_info,
+                        'location': result['location']
+                    }
                 else:
                     # 自动结算的事件
                     auto_result = event_info.get('auto_result', {})
@@ -3447,6 +3458,117 @@ class XiuxianPlugin(Star):
         except Exception as e:
             logger.error(f"探索失败: {e}", exc_info=True)
             yield event.plain_result(f"探索失败：{str(e)}")
+
+    @filter.command("选择", alias={"choice", "choose"})
+    async def event_choice_cmd(self, event: AstrMessageEvent):
+        """处理探索事件的选择"""
+        user_id = event.get_sender_id()
+        message_text = self._get_message_text(event)
+
+        try:
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
+            # 检查是否有待选择的事件
+            if user_id not in self._exploration_events:
+                yield event.plain_result("⚠️ 当前没有需要选择的事件\n\n💡 使用 /探索 开始探索")
+                return
+
+            # 解析选择编号
+            parts = message_text.split()
+            if len(parts) < 2:
+                yield event.plain_result("⚠️ 请输入选择的编号\n\n💡 使用方法：/选择 [编号]\n   例如：/选择 1")
+                return
+
+            try:
+                choice_index = int(parts[1]) - 1
+            except ValueError:
+                yield event.plain_result("⚠️ 请输入有效的编号！")
+                return
+
+            # 获取事件数据
+            event_data = self._exploration_events[user_id]
+            event_info = event_data['event']
+            location = event_data['location']
+            choices = event_info.get('choices', [])
+
+            # 检查选择是否有效
+            if choice_index < 0 or choice_index >= len(choices):
+                yield event.plain_result(f"⚠️ 无效的选择编号！请选择 1-{len(choices)}")
+                return
+
+            selected_choice = choices[choice_index]
+
+            # 处理选择结果
+            result = await self.world_mgr.handle_event_choice(
+                user_id,
+                event_info,
+                selected_choice,
+                location
+            )
+
+            # 清除已处理的事件
+            del self._exploration_events[user_id]
+
+            # 显示结果
+            lines = [
+                f"✓ 你选择了：{selected_choice['text']}",
+                "─" * 40,
+                ""
+            ]
+
+            if result.get('message'):
+                lines.append(result['message'])
+
+            # 发放奖励
+            rewards = result.get('rewards', {})
+            if rewards:
+                lines.append("")
+                reward_lines = []
+
+                if 'spirit_stone' in rewards and rewards['spirit_stone'] != 0:
+                    spirit_stone_change = rewards['spirit_stone']
+                    await self.db.execute(
+                        "UPDATE players SET spirit_stone = MAX(0, spirit_stone + ?) WHERE user_id = ?",
+                        (spirit_stone_change, user_id)
+                    )
+                    if spirit_stone_change > 0:
+                        reward_lines.append(f"   💎 灵石 +{spirit_stone_change}")
+                    else:
+                        reward_lines.append(f"   💎 灵石 {spirit_stone_change}")
+
+                if 'cultivation' in rewards and rewards['cultivation'] != 0:
+                    cultivation_change = rewards['cultivation']
+                    await self.db.execute(
+                        "UPDATE players SET cultivation = MAX(0, cultivation + ?) WHERE user_id = ?",
+                        (cultivation_change, user_id)
+                    )
+                    if cultivation_change > 0:
+                        reward_lines.append(f"   ✨ 修为 +{cultivation_change}")
+                    else:
+                        reward_lines.append(f"   ✨ 修为 {cultivation_change}")
+
+                if reward_lines:
+                    lines.append("📦 获得奖励：" if any(rewards.get(k, 0) > 0 for k in rewards) else "💰 消耗资源：")
+                    lines.extend(reward_lines)
+
+            # 处理伤害
+            if result.get('damage', 0) > 0:
+                damage = result['damage']
+                await self.db.execute(
+                    "UPDATE players SET hp = MAX(1, hp - ?) WHERE user_id = ?",
+                    (damage, user_id)
+                )
+                lines.append(f"\n💔 生命值 -{damage}")
+
+            yield event.plain_result("\n".join(lines))
+
+        except PlayerNotFoundError:
+            yield event.plain_result("您还没有创建角色，请先使用 /修仙 创建角色")
+        except Exception as e:
+            logger.error(f"处理选择失败: {e}", exc_info=True)
+            yield event.plain_result(f"处理选择失败：{str(e)}")
 
     @filter.command("地点详情", alias={"location_info", "地点信息"})
     async def location_info_cmd(self, event: AstrMessageEvent):

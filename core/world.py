@@ -11,6 +11,7 @@ from astrbot.api import logger
 
 from .database import DatabaseManager
 from .player import PlayerManager
+from .story_generator import LLMStoryGenerator
 from ..models.location_model import Location, PlayerLocation
 from ..models.player_model import Player
 
@@ -41,9 +42,12 @@ class WorldManager:
     # 移动冷却时间(秒)
     MOVE_COOLDOWN = 60  # 1分钟
 
-    def __init__(self, db: DatabaseManager, player_mgr: PlayerManager):
+    def __init__(self, db: DatabaseManager, player_mgr: PlayerManager, context=None, enable_ai: bool = True):
         self.db = db
         self.player_mgr = player_mgr
+        self.context = context
+        self.enable_ai = enable_ai
+        self.story_generator = LLMStoryGenerator(db, player_mgr, context)
 
     async def get_location(self, location_id: int) -> Optional[Location]:
         """获取地点信息"""
@@ -225,6 +229,7 @@ class WorldManager:
         results = {
             'location': location,
             'event': None,  # 触发的事件（需要玩家选择）
+            'story': None,  # LLM生成的故事
             'discoveries': [],
             'encounters': [],
             'rewards': {},
@@ -235,17 +240,45 @@ class WorldManager:
         event_chance = 0.4 + (location.danger_level * 0.05) + (location.spirit_energy_density / 1000.0)
 
         if random.random() < event_chance:
-            # 触发探索事件
-            event = await self._generate_exploration_event(user_id, location, player)
-            results['event'] = event
+            # 使用LLM生成动态故事
+            try:
+                story = await self.story_generator.generate_exploration_story(
+                    user_id, location, player, self.enable_ai
+                )
+                results['story'] = story
 
-            if event.get('has_choice'):
-                # 需要玩家选择
-                results['has_choice'] = True
-            else:
-                # 自动结算的事件
-                if 'auto_result' in event:
-                    results.update(event['auto_result'])
+                # 检查是否有选择
+                choices = json.loads(story.get('choices', '[]'))
+                if choices:
+                    results['has_choice'] = True
+                    results['event'] = {
+                        'type': story['story_type'],
+                        'title': story['story_title'],
+                        'description': story['story_content'],
+                        'has_choice': True,
+                        'choices': choices,
+                        'story_id': story['id']
+                    }
+                else:
+                    # 自动结算
+                    rewards = json.loads(story.get('rewards', '{}'))
+                    results['rewards'] = rewards
+                    results['message'] = story['story_content']
+
+                    # 应用奖励
+                    await self._apply_story_rewards(user_id, rewards)
+
+            except Exception as e:
+                logger.error(f"生成LLM故事失败: {e}")
+                # 回退到原有的事件生成
+                event = await self._generate_exploration_event(user_id, location, player)
+                results['event'] = event
+
+                if event.get('has_choice'):
+                    results['has_choice'] = True
+                else:
+                    if 'auto_result' in event:
+                        results.update(event['auto_result'])
 
         return results
 
@@ -770,3 +803,348 @@ class WorldManager:
                 'message': f'采集了稀有灵药，价值 {int(herb_value)} 灵石！'
             }
         }
+
+    async def handle_event_choice(
+        self,
+        user_id: str,
+        event_info: Dict,
+        selected_choice: Dict,
+        location: Location
+    ) -> Dict:
+        """
+        处理探索事件的选择结果
+
+        Args:
+            user_id: 用户ID
+            event_info: 事件信息
+            selected_choice: 玩家选择的选项
+            location: 当前地点
+
+        Returns:
+            选择结果字典
+        """
+        # 检查是否是新的LLM故事
+        if 'story_id' in event_info:
+            # 使用LLM故事生成器处理选择
+            try:
+                result = await self.story_generator.handle_story_choice(
+                    user_id,
+                    event_info['story_id'],
+                    selected_choice.get('id'),
+                    self.enable_ai
+                )
+
+                # 应用奖励
+                if 'rewards' in result:
+                    await self._apply_story_rewards(user_id, result['rewards'])
+
+                return result
+            except Exception as e:
+                logger.error(f"处理LLM故事选择失败: {e}")
+                # 回退到传统处理
+
+        # 传统事件处理
+        event_type = event_info.get('type')
+        choice_id = selected_choice.get('id')
+        event_data = event_info.get('event_data', {})
+
+        # 获取玩家信息
+        player = await self.player_mgr.get_player(user_id)
+        if not player:
+            raise WorldException("玩家不存在")
+
+        # 根据事件类型和选择处理结果
+        handlers = {
+            'mysterious_npc': self._handle_mysterious_npc_choice,
+            'monster_encounter': self._handle_monster_encounter_choice,
+            'treasure_chest': self._handle_treasure_chest_choice,
+            'ancient_ruin': self._handle_ancient_ruin_choice,
+            'powerful_cultivator': self._handle_powerful_cultivator_choice,
+            'secret_realm': self._handle_secret_realm_choice,
+            'ancient_inheritance': self._handle_ancient_inheritance_choice,
+            'spatial_anomaly': self._handle_spatial_anomaly_choice,
+        }
+
+        handler = handlers.get(event_type)
+        if handler:
+            return await handler(user_id, player, choice_id, event_data, location)
+        else:
+            # 默认处理
+            return {
+                'message': '什么也没有发生...',
+                'rewards': {}
+            }
+
+    async def _handle_mysterious_npc_choice(self, user_id: str, player: Player, choice_id: str, event_data: Dict, location: Location) -> Dict:
+        """处理神秘NPC选择"""
+        if choice_id == 'talk':
+            # 交谈获得情报或小奖励
+            reward = random.randint(50, 200) * location.danger_level
+            return {
+                'message': '神秘修士向你透露了一些修炼心得...',
+                'rewards': {'cultivation': reward}
+            }
+        elif choice_id == 'trade':
+            # 交易
+            cost = random.randint(200, 500) * location.danger_level
+            reward = int(cost * random.uniform(1.2, 2.0))
+            return {
+                'message': f'你花费 {cost} 灵石从神秘修士处购买了一些物品，转手卖出获得 {reward} 灵石！',
+                'rewards': {'spirit_stone': reward - cost}
+            }
+        else:  # ignore
+            return {'message': '你离开了神秘修士...'}
+
+    async def _handle_monster_encounter_choice(self, user_id: str, player: Player, choice_id: str, event_data: Dict, location: Location) -> Dict:
+        """处理妖兽遭遇选择"""
+        monster_level = event_data.get('monster_level', location.danger_level)
+
+        if choice_id == 'fight':
+            # 简单的战斗判定
+            player_power = player.attack + player.defense + player.realm_level * 10
+            monster_power = monster_level * 30 + random.randint(-10, 10)
+
+            if player_power > monster_power:
+                # 胜利
+                reward = random.randint(100, 300) * monster_level
+                return {
+                    'message': f'激战之后，你成功击败了 {monster_level} 阶妖兽！',
+                    'rewards': {'spirit_stone': reward}
+                }
+            else:
+                # 失败
+                damage = random.randint(50, 150) * monster_level
+                return {
+                    'message': f'你败在了妖兽手下，仓皇逃离...',
+                    'damage': damage
+                }
+        else:  # flee
+            cost = random.randint(50, 150)
+            return {
+                'message': f'你花费 {cost} 灵石使用了传送符逃离！',
+                'rewards': {'spirit_stone': -cost}
+            }
+
+    async def _handle_treasure_chest_choice(self, user_id: str, player: Player, choice_id: str, event_data: Dict, location: Location) -> Dict:
+        """处理宝箱选择"""
+        chest_quality = event_data.get('chest_quality', location.danger_level)
+        trap_chance = event_data.get('trap_chance', 0.3)
+
+        if choice_id == 'open_direct':
+            # 直接打开，有陷阱风险但奖励高
+            if random.random() < trap_chance:
+                damage = random.randint(100, 300) * chest_quality
+                return {
+                    'message': '宝箱是陷阱！你触发了机关！',
+                    'damage': damage
+                }
+            else:
+                reward = random.randint(500, 1000) * chest_quality
+                return {
+                    'message': '宝箱中装满了宝物！',
+                    'rewards': {'spirit_stone': reward}
+                }
+        elif choice_id == 'open_careful':
+            # 小心打开，安全但奖励减半
+            reward = random.randint(250, 500) * chest_quality
+            return {
+                'message': '你小心翼翼地打开了宝箱...',
+                'rewards': {'spirit_stone': reward}
+            }
+        else:  # ignore
+            return {'message': '你选择不打开宝箱，离开了...'}
+
+    async def _handle_ancient_ruin_choice(self, user_id: str, player: Player, choice_id: str, event_data: Dict, location: Location) -> Dict:
+        """处理古代遗迹选择"""
+        ruin_level = event_data.get('ruin_level', location.danger_level)
+
+        if choice_id == 'explore':
+            # 探索遗迹，随机结果
+            roll = random.random()
+            if roll < 0.3:
+                # 获得大量奖励
+                reward = random.randint(1000, 2000) * ruin_level
+                return {
+                    'message': '你在遗迹深处发现了前人留下的宝藏！',
+                    'rewards': {'spirit_stone': reward, 'cultivation': reward // 2}
+                }
+            elif roll < 0.6:
+                # 获得少量奖励
+                reward = random.randint(300, 600) * ruin_level
+                return {
+                    'message': '你在遗迹中找到了一些有价值的东西...',
+                    'rewards': {'spirit_stone': reward}
+                }
+            else:
+                # 触发危险
+                damage = random.randint(100, 300) * ruin_level
+                return {
+                    'message': '遗迹中的禁制突然发动，你受到了攻击！',
+                    'damage': damage
+                }
+        else:  # mark
+            return {'message': '你标记了遗迹的位置，打算日后再来探索...'}
+
+    async def _handle_powerful_cultivator_choice(self, user_id: str, player: Player, choice_id: str, event_data: Dict, location: Location) -> Dict:
+        """处理强大修士选择"""
+        is_friendly = event_data.get('friendly', True)
+
+        if choice_id == 'greet':
+            if is_friendly:
+                reward = random.randint(200, 500) * location.danger_level
+                return {
+                    'message': '前辈很欣赏你的礼貌，赠予了你一些修炼资源！',
+                    'rewards': {'cultivation': reward}
+                }
+            else:
+                return {'message': '对方冷冷地看了你一眼，没有理会...'}
+        elif choice_id == 'challenge':
+            # 切磋，失败概率高
+            if random.random() < 0.2:
+                reward = random.randint(500, 1000) * location.danger_level
+                return {
+                    'message': '你在切磋中表现出色，前辈传授了你一些经验！',
+                    'rewards': {'cultivation': reward}
+                }
+            else:
+                damage = random.randint(100, 300)
+                return {
+                    'message': '你在切磋中落败，受了一些轻伤...',
+                    'damage': damage
+                }
+        else:  # avoid
+            return {'message': '你选择避开这位强大的修士...'}
+
+    async def _handle_secret_realm_choice(self, user_id: str, player: Player, choice_id: str, event_data: Dict, location: Location) -> Dict:
+        """处理秘境入口选择"""
+        realm_level = event_data.get('realm_level', location.danger_level)
+
+        if choice_id == 'enter':
+            # 进入秘境，高风险高收益
+            roll = random.random()
+            if roll < 0.4:
+                # 大成功
+                reward = random.randint(2000, 5000) * realm_level
+                return {
+                    'message': '你在秘境中获得了惊人的机缘！',
+                    'rewards': {'spirit_stone': reward, 'cultivation': reward}
+                }
+            elif roll < 0.7:
+                # 小成功
+                reward = random.randint(500, 1500) * realm_level
+                return {
+                    'message': '你在秘境中获得了一些收获...',
+                    'rewards': {'cultivation': reward}
+                }
+            else:
+                # 危险
+                damage = random.randint(200, 500) * realm_level
+                return {
+                    'message': '秘境中充满危险，你受了重伤！',
+                    'damage': damage
+                }
+        else:  # later
+            return {'message': '你标记了秘境入口的位置，打算实力提升后再来...'}
+
+    async def _handle_ancient_inheritance_choice(self, user_id: str, player: Player, choice_id: str, event_data: Dict, location: Location) -> Dict:
+        """处理古代传承选择"""
+        inheritance_quality = event_data.get('inheritance_quality', location.danger_level)
+
+        if choice_id == 'accept':
+            # 接受传承，基于幸运和悟性判定
+            success_rate = 0.3 + (player.luck / 200) + (player.comprehension / 200)
+            if random.random() < success_rate:
+                reward = random.randint(3000, 8000) * inheritance_quality
+                return {
+                    'message': '你通过了传承考验，获得了古代修士的传承！',
+                    'rewards': {'cultivation': reward}
+                }
+            else:
+                damage = random.randint(50, 200)
+                return {
+                    'message': '你未能通过传承考验，受到了反噬...',
+                    'damage': damage,
+                    'rewards': {'cultivation': 100 * inheritance_quality}
+                }
+        else:  # decline
+            return {'message': '你选择放弃这次传承机会...'}
+
+    async def _handle_spatial_anomaly_choice(self, user_id: str, player: Player, choice_id: str, event_data: Dict, location: Location) -> Dict:
+        """处理空间异常选择"""
+        anomaly_level = event_data.get('anomaly_level', location.danger_level)
+
+        if choice_id == 'investigate':
+            roll = random.random()
+            if roll < 0.5:
+                reward = random.randint(1000, 3000) * anomaly_level
+                return {
+                    'message': '你在空间裂缝中找到了珍贵的空间属性材料！',
+                    'rewards': {'spirit_stone': reward}
+                }
+            else:
+                damage = random.randint(150, 400) * anomaly_level
+                return {
+                    'message': '空间波动伤到了你！',
+                    'damage': damage
+                }
+        else:  # avoid
+            return {'message': '你明智地远离了不稳定的空间异常...'}
+
+    async def _apply_story_rewards(self, user_id: str, rewards: Dict):
+        """
+        应用故事奖励
+
+        Args:
+            user_id: 用户ID
+            rewards: 奖励字典
+        """
+        player = await self.player_mgr.get_player(user_id)
+        if not player:
+            return
+
+        # 基础奖励
+        base_rewards = rewards.get('base_rewards', {})
+
+        # 灵石
+        if 'spirit_stone' in base_rewards:
+            spirit_stone = base_rewards['spirit_stone']
+            await self.db.execute(
+                "UPDATE players SET spirit_stone = spirit_stone + ? WHERE user_id = ?",
+                (spirit_stone, user_id)
+            )
+            logger.info(f"玩家 {user_id} 获得灵石: {spirit_stone}")
+
+        # 修为
+        if 'cultivation' in base_rewards:
+            cultivation = base_rewards['cultivation']
+            await self.db.execute(
+                "UPDATE players SET cultivation = cultivation + ? WHERE user_id = ?",
+                (cultivation, user_id)
+            )
+            logger.info(f"玩家 {user_id} 获得修为: {cultivation}")
+
+        # 特殊物品
+        items = rewards.get('items', [])
+        for item in items:
+            await self.db.execute("""
+                INSERT INTO items (
+                    user_id, item_type, item_name, quality, description, effect
+                ) VALUES (?, ?, ?, ?, ?, ?)
+            """, (
+                user_id,
+                'special',
+                item.get('name', '神秘物品'),
+                item.get('quality', '凡品'),
+                item.get('description', ''),
+                item.get('effect', '')
+            ))
+            logger.info(f"玩家 {user_id} 获得物品: {item.get('name')}")
+
+        # 伤害
+        if 'damage' in base_rewards:
+            damage = base_rewards['damage']
+            await self.db.execute(
+                "UPDATE players SET hp = MAX(1, hp - ?) WHERE user_id = ?",
+                (damage, user_id)
+            )
+            logger.info(f"玩家 {user_id} 受到伤害: {damage}")
