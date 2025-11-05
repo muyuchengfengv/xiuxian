@@ -158,8 +158,18 @@ class XiuxianPlugin(Star):
             self.ai_generator = AIGenerator(self.db, self.player_mgr)
             self.tribulation_sys = TribulationSystem(self.db, self.player_mgr)
 
-            # 获取配置
-            enable_ai = self.context.config_helper.get('enable_ai_generation', True)
+            # 获取配置 - 安全访问配置
+            enable_ai = True  # 默认启用AI生成
+            try:
+                # 尝试多种配置访问方式
+                if hasattr(self.context, 'config_helper'):
+                    enable_ai = self.context.config_helper.get('enable_ai_generation', True)
+                elif hasattr(self.context, 'get_config'):
+                    enable_ai = self.context.get_config('enable_ai_generation', True)
+                elif hasattr(self, 'config'):
+                    enable_ai = self.config.get('enable_ai_generation', True)
+            except Exception as e:
+                logger.warning(f"无法获取配置，使用默认值 enable_ai=True: {e}")
 
             # 初始化世界管理器（支持LLM故事生成）
             self.world_mgr = WorldManager(self.db, self.player_mgr, self.context, enable_ai)
