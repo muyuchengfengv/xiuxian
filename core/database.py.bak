@@ -248,452 +248,452 @@ class DatabaseManager:
             retreat_duration INTEGER DEFAULT 0
         """)
 
-            # 装备表
-            await self._ensure_table_exists("equipment", """
-                id TEXT PRIMARY KEY,
-                user_id TEXT NOT NULL,
-                name TEXT NOT NULL,
-                type TEXT NOT NULL,
-                sub_type TEXT,
-                quality TEXT NOT NULL,
-                level INTEGER NOT NULL,
-                enhance_level INTEGER DEFAULT 0,
-                attack INTEGER DEFAULT 0,
-                defense INTEGER DEFAULT 0,
-                hp_bonus INTEGER DEFAULT 0,
-                mp_bonus INTEGER DEFAULT 0,
-                extra_attrs TEXT,
-                special_effect TEXT,
-                skill_id INTEGER,
-                is_equipped INTEGER DEFAULT 0,
-                is_bound INTEGER DEFAULT 0,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            """)
+        # 装备表
+        await self._ensure_table_exists("equipment", """
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            type TEXT NOT NULL,
+            sub_type TEXT,
+            quality TEXT NOT NULL,
+            level INTEGER NOT NULL,
+            enhance_level INTEGER DEFAULT 0,
+            attack INTEGER DEFAULT 0,
+            defense INTEGER DEFAULT 0,
+            hp_bonus INTEGER DEFAULT 0,
+            mp_bonus INTEGER DEFAULT 0,
+            extra_attrs TEXT,
+            special_effect TEXT,
+            skill_id INTEGER,
+            is_equipped INTEGER DEFAULT 0,
+            is_bound INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        """)
 
-            # 技能表
-            await self._ensure_table_exists("skills", """
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id TEXT NOT NULL,
-                skill_name TEXT NOT NULL,
-                skill_type TEXT,
-                element TEXT,
-                level INTEGER DEFAULT 1,
-                proficiency INTEGER DEFAULT 0,
-                base_damage INTEGER DEFAULT 0,
-                mp_cost INTEGER DEFAULT 10,
-                cooldown INTEGER DEFAULT 0,
-                effect_description TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            """)
+        # 技能表
+        await self._ensure_table_exists("skills", """
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL,
+            skill_name TEXT NOT NULL,
+            skill_type TEXT,
+            element TEXT,
+            level INTEGER DEFAULT 1,
+            proficiency INTEGER DEFAULT 0,
+            base_damage INTEGER DEFAULT 0,
+            mp_cost INTEGER DEFAULT 10,
+            cooldown INTEGER DEFAULT 0,
+            effect_description TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        """)
 
-            # 职业信息表
-            await self._ensure_table_exists("professions", """
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id TEXT NOT NULL,
-                profession_type TEXT NOT NULL,
-                rank INTEGER DEFAULT 1,
-                experience INTEGER DEFAULT 0,
-                reputation INTEGER DEFAULT 0,
-                reputation_level TEXT DEFAULT '无名小卒',
-                success_rate_bonus INTEGER DEFAULT 0,
-                quality_bonus INTEGER DEFAULT 0,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            """)
+        # 职业信息表
+        await self._ensure_table_exists("professions", """
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL,
+            profession_type TEXT NOT NULL,
+            rank INTEGER DEFAULT 1,
+            experience INTEGER DEFAULT 0,
+            reputation INTEGER DEFAULT 0,
+            reputation_level TEXT DEFAULT '无名小卒',
+            success_rate_bonus INTEGER DEFAULT 0,
+            quality_bonus INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        """)
 
-            # 配方/图纸/阵法/符箓表
-            await self._ensure_table_exists("recipes", """
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id TEXT,
-                recipe_type TEXT NOT NULL,
-                name TEXT NOT NULL,
-                rank INTEGER DEFAULT 1,
-                description TEXT,
-                materials TEXT,
-                output_name TEXT,
-                output_quality TEXT,
-                base_success_rate INTEGER DEFAULT 50,
-                special_requirements TEXT,
-                source TEXT,
-                is_ai_generated BOOLEAN DEFAULT 0,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            """)
+        # 配方/图纸/阵法/符箓表
+        await self._ensure_table_exists("recipes", """
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT,
+            recipe_type TEXT NOT NULL,
+            name TEXT NOT NULL,
+            rank INTEGER DEFAULT 1,
+            description TEXT,
+            materials TEXT,
+            output_name TEXT,
+            output_quality TEXT,
+            base_success_rate INTEGER DEFAULT 50,
+            special_requirements TEXT,
+            source TEXT,
+            is_ai_generated BOOLEAN DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        """)
 
-            # 炼制记录表
-            await self._ensure_table_exists("crafting_logs", """
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id TEXT NOT NULL,
-                craft_type TEXT NOT NULL,
-                recipe_id INTEGER,
-                success BOOLEAN DEFAULT 0,
-                output_quality TEXT,
-                output_item_id INTEGER,
-                materials_used TEXT,
-                spirit_stone_cost INTEGER DEFAULT 0,
-                experience_gained INTEGER DEFAULT 0,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            """)
+        # 炼制记录表
+        await self._ensure_table_exists("crafting_logs", """
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL,
+            craft_type TEXT NOT NULL,
+            recipe_id INTEGER,
+            success BOOLEAN DEFAULT 0,
+            output_quality TEXT,
+            output_item_id INTEGER,
+            materials_used TEXT,
+            spirit_stone_cost INTEGER DEFAULT 0,
+            experience_gained INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        """)
 
-            # 工具表（丹炉、器炉等）
-            await self._ensure_table_exists("tools", """
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id TEXT NOT NULL,
-                tool_type TEXT NOT NULL,
-                name TEXT NOT NULL,
-                quality TEXT DEFAULT '凡品',
-                success_rate_bonus INTEGER DEFAULT 0,
-                quality_bonus INTEGER DEFAULT 0,
-                special_effects TEXT,
-                durability INTEGER DEFAULT 100,
-                max_durability INTEGER DEFAULT 100,
-                is_active BOOLEAN DEFAULT 0,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            """)
+        # 工具表（丹炉、器炉等）
+        await self._ensure_table_exists("tools", """
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL,
+            tool_type TEXT NOT NULL,
+            name TEXT NOT NULL,
+            quality TEXT DEFAULT '凡品',
+            success_rate_bonus INTEGER DEFAULT 0,
+            quality_bonus INTEGER DEFAULT 0,
+            special_effects TEXT,
+            durability INTEGER DEFAULT 100,
+            max_durability INTEGER DEFAULT 100,
+            is_active BOOLEAN DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        """)
 
-            # 职业技能表
-            await self._ensure_table_exists("profession_skills", """
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id TEXT NOT NULL,
-                profession_type TEXT NOT NULL,
-                skill_name TEXT NOT NULL,
-                skill_level INTEGER DEFAULT 1,
-                effect_type TEXT,
-                effect_value INTEGER DEFAULT 0,
-                description TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            """)
+        # 职业技能表
+        await self._ensure_table_exists("profession_skills", """
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL,
+            profession_type TEXT NOT NULL,
+            skill_name TEXT NOT NULL,
+            skill_level INTEGER DEFAULT 1,
+            effect_type TEXT,
+            effect_value INTEGER DEFAULT 0,
+            description TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        """)
 
-            # 活跃阵法表
-            await self._ensure_table_exists("active_formations", """
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id TEXT NOT NULL,
-                formation_name TEXT NOT NULL,
-                location_id INTEGER,
-                formation_type TEXT,
-                strength INTEGER DEFAULT 1,
-                range INTEGER DEFAULT 10,
-                effects TEXT,
-                energy_cost INTEGER DEFAULT 10,
-                is_active BOOLEAN DEFAULT 1,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                expires_at TIMESTAMP
-            """)
+        # 活跃阵法表
+        await self._ensure_table_exists("active_formations", """
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL,
+            formation_name TEXT NOT NULL,
+            location_id INTEGER,
+            formation_type TEXT,
+            strength INTEGER DEFAULT 1,
+            range INTEGER DEFAULT 10,
+            effects TEXT,
+            energy_cost INTEGER DEFAULT 10,
+            is_active BOOLEAN DEFAULT 1,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            expires_at TIMESTAMP
+        """)
 
-            # 物品表 (用于存储符箓等消耗品)
-            await self._ensure_table_exists("items", """
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id TEXT NOT NULL,
-                item_type TEXT NOT NULL,
-                item_name TEXT NOT NULL,
-                quality TEXT,
-                quantity INTEGER DEFAULT 1,
-                description TEXT,
-                effect TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            """)
+        # 物品表 (用于存储符箓等消耗品)
+        await self._ensure_table_exists("items", """
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL,
+            item_type TEXT NOT NULL,
+            item_name TEXT NOT NULL,
+            quality TEXT,
+            quantity INTEGER DEFAULT 1,
+            description TEXT,
+            effect TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        """)
 
-            # 功法表
-            await self._ensure_table_exists("cultivation_methods", """
-                id TEXT PRIMARY KEY,
-                user_id TEXT NOT NULL,
-                name TEXT NOT NULL,
-                description TEXT,
-                method_type TEXT NOT NULL,
-                element_type TEXT NOT NULL,
-                cultivation_type TEXT NOT NULL,
-                quality TEXT NOT NULL,
-                grade INTEGER NOT NULL,
-                min_realm TEXT NOT NULL,
-                min_realm_level INTEGER NOT NULL,
-                min_level INTEGER NOT NULL,
-                attack_bonus INTEGER DEFAULT 0,
-                defense_bonus INTEGER DEFAULT 0,
-                speed_bonus INTEGER DEFAULT 0,
-                hp_bonus INTEGER DEFAULT 0,
-                mp_bonus INTEGER DEFAULT 0,
-                cultivation_speed_bonus REAL DEFAULT 0.0,
-                breakthrough_rate_bonus REAL DEFAULT 0.0,
-                special_effects TEXT,
-                skill_damage INTEGER DEFAULT 0,
-                cooldown_reduction REAL DEFAULT 0.0,
-                owner_id TEXT,
-                is_equipped INTEGER DEFAULT 0,
-                equip_slot TEXT,
-                proficiency INTEGER DEFAULT 0,
-                max_proficiency INTEGER DEFAULT 1000,
-                mastery_level INTEGER DEFAULT 0,
-                source_type TEXT,
-                source_detail TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                equipped_at TIMESTAMP,
-                last_practiced_at TIMESTAMP
-            """)
+        # 功法表
+        await self._ensure_table_exists("cultivation_methods", """
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT,
+            method_type TEXT NOT NULL,
+            element_type TEXT NOT NULL,
+            cultivation_type TEXT NOT NULL,
+            quality TEXT NOT NULL,
+            grade INTEGER NOT NULL,
+            min_realm TEXT NOT NULL,
+            min_realm_level INTEGER NOT NULL,
+            min_level INTEGER NOT NULL,
+            attack_bonus INTEGER DEFAULT 0,
+            defense_bonus INTEGER DEFAULT 0,
+            speed_bonus INTEGER DEFAULT 0,
+            hp_bonus INTEGER DEFAULT 0,
+            mp_bonus INTEGER DEFAULT 0,
+            cultivation_speed_bonus REAL DEFAULT 0.0,
+            breakthrough_rate_bonus REAL DEFAULT 0.0,
+            special_effects TEXT,
+            skill_damage INTEGER DEFAULT 0,
+            cooldown_reduction REAL DEFAULT 0.0,
+            owner_id TEXT,
+            is_equipped INTEGER DEFAULT 0,
+            equip_slot TEXT,
+            proficiency INTEGER DEFAULT 0,
+            max_proficiency INTEGER DEFAULT 1000,
+            mastery_level INTEGER DEFAULT 0,
+            source_type TEXT,
+            source_detail TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            equipped_at TIMESTAMP,
+            last_practiced_at TIMESTAMP
+        """)
 
-            # 宗门表
-            await self._ensure_table_exists("sects", """
-                id TEXT PRIMARY KEY,
-                name TEXT UNIQUE NOT NULL,
-                description TEXT,
-                announcement TEXT,
-                sect_type TEXT NOT NULL,
-                sect_style TEXT NOT NULL,
-                level INTEGER DEFAULT 1,
-                experience INTEGER DEFAULT 0,
-                max_experience INTEGER DEFAULT 1000,
-                spirit_stone INTEGER DEFAULT 0,
-                contribution INTEGER DEFAULT 0,
-                reputation INTEGER DEFAULT 0,
-                power INTEGER DEFAULT 0,
-                leader_id TEXT NOT NULL,
-                member_count INTEGER DEFAULT 0,
-                max_members INTEGER DEFAULT 20,
-                buildings TEXT,
-                sect_skills TEXT,
-                is_recruiting INTEGER DEFAULT 1,
-                join_requirement TEXT,
-                in_war INTEGER DEFAULT 0,
-                war_target_id TEXT,
-                war_score INTEGER DEFAULT 0,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                last_active_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            """)
+        # 宗门表
+        await self._ensure_table_exists("sects", """
+            id TEXT PRIMARY KEY,
+            name TEXT UNIQUE NOT NULL,
+            description TEXT,
+            announcement TEXT,
+            sect_type TEXT NOT NULL,
+            sect_style TEXT NOT NULL,
+            level INTEGER DEFAULT 1,
+            experience INTEGER DEFAULT 0,
+            max_experience INTEGER DEFAULT 1000,
+            spirit_stone INTEGER DEFAULT 0,
+            contribution INTEGER DEFAULT 0,
+            reputation INTEGER DEFAULT 0,
+            power INTEGER DEFAULT 0,
+            leader_id TEXT NOT NULL,
+            member_count INTEGER DEFAULT 0,
+            max_members INTEGER DEFAULT 20,
+            buildings TEXT,
+            sect_skills TEXT,
+            is_recruiting INTEGER DEFAULT 1,
+            join_requirement TEXT,
+            in_war INTEGER DEFAULT 0,
+            war_target_id TEXT,
+            war_score INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            last_active_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        """)
 
-            # 宗门成员表
-            await self._ensure_table_exists("sect_members", """
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id TEXT UNIQUE NOT NULL,
-                sect_id TEXT NOT NULL,
-                position TEXT NOT NULL,
-                position_level INTEGER NOT NULL,
-                contribution INTEGER DEFAULT 0,
-                total_contribution INTEGER DEFAULT 0,
-                activity INTEGER DEFAULT 0,
-                last_active_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            """)
+        # 宗门成员表
+        await self._ensure_table_exists("sect_members", """
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT UNIQUE NOT NULL,
+            sect_id TEXT NOT NULL,
+            position TEXT NOT NULL,
+            position_level INTEGER NOT NULL,
+            contribution INTEGER DEFAULT 0,
+            total_contribution INTEGER DEFAULT 0,
+            activity INTEGER DEFAULT 0,
+            last_active_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        """)
 
-            # AI生成历史表
-            await self._ensure_table_exists("ai_generation_history", """
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id TEXT NOT NULL,
-                content_type TEXT NOT NULL,
-                content_id TEXT NOT NULL,
-                generated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            """)
+        # AI生成历史表
+        await self._ensure_table_exists("ai_generation_history", """
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL,
+            content_type TEXT NOT NULL,
+            content_id TEXT NOT NULL,
+            generated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        """)
 
-            # 天劫表
-            await self._ensure_table_exists("tribulations", """
-                id TEXT PRIMARY KEY,
-                user_id TEXT NOT NULL,
-                tribulation_type TEXT NOT NULL,
-                realm TEXT NOT NULL,
-                realm_level INTEGER NOT NULL,
-                tribulation_level INTEGER NOT NULL,
-                difficulty TEXT NOT NULL,
-                total_waves INTEGER NOT NULL,
-                current_wave INTEGER DEFAULT 0,
-                damage_per_wave INTEGER NOT NULL,
-                damage_reduction REAL DEFAULT 0.0,
-                status TEXT NOT NULL,
-                success INTEGER DEFAULT 0,
-                initial_hp INTEGER DEFAULT 0,
-                current_hp INTEGER DEFAULT 0,
-                total_damage_taken INTEGER DEFAULT 0,
-                rewards TEXT,
-                penalties TEXT,
-                wave_logs TEXT,
-                started_at TEXT,
-                completed_at TEXT,
-                created_at TEXT NOT NULL
-            """)
+        # 天劫表
+        await self._ensure_table_exists("tribulations", """
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            tribulation_type TEXT NOT NULL,
+            realm TEXT NOT NULL,
+            realm_level INTEGER NOT NULL,
+            tribulation_level INTEGER NOT NULL,
+            difficulty TEXT NOT NULL,
+            total_waves INTEGER NOT NULL,
+            current_wave INTEGER DEFAULT 0,
+            damage_per_wave INTEGER NOT NULL,
+            damage_reduction REAL DEFAULT 0.0,
+            status TEXT NOT NULL,
+            success INTEGER DEFAULT 0,
+            initial_hp INTEGER DEFAULT 0,
+            current_hp INTEGER DEFAULT 0,
+            total_damage_taken INTEGER DEFAULT 0,
+            rewards TEXT,
+            penalties TEXT,
+            wave_logs TEXT,
+            started_at TEXT,
+            completed_at TEXT,
+            created_at TEXT NOT NULL
+        """)
 
-            # 职业考核表
-            await self._ensure_table_exists("profession_exams", """
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id TEXT NOT NULL,
-                profession_type TEXT NOT NULL,
-                target_rank INTEGER NOT NULL,
-                exam_title TEXT NOT NULL,
-                tasks TEXT,
-                results TEXT,
-                status TEXT DEFAULT 'in_progress',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                completed_at TIMESTAMP
-            """)
+        # 职业考核表
+        await self._ensure_table_exists("profession_exams", """
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL,
+            profession_type TEXT NOT NULL,
+            target_rank INTEGER NOT NULL,
+            exam_title TEXT NOT NULL,
+            tasks TEXT,
+            results TEXT,
+            status TEXT DEFAULT 'in_progress',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            completed_at TIMESTAMP
+        """)
 
-            # 地点表
-            await self._ensure_table_exists("locations", """
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL UNIQUE,
-                description TEXT NOT NULL,
-                region_type TEXT NOT NULL,
-                danger_level INTEGER DEFAULT 1,
-                spirit_energy_density INTEGER DEFAULT 50,
-                min_realm TEXT DEFAULT '炼气期',
-                coordinates_x INTEGER DEFAULT 0,
-                coordinates_y INTEGER DEFAULT 0,
-                resources TEXT,
-                connected_locations TEXT,
-                is_safe_zone INTEGER DEFAULT 0,
-                discovered_by TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            """)
+        # 地点表
+        await self._ensure_table_exists("locations", """
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE,
+            description TEXT NOT NULL,
+            region_type TEXT NOT NULL,
+            danger_level INTEGER DEFAULT 1,
+            spirit_energy_density INTEGER DEFAULT 50,
+            min_realm TEXT DEFAULT '炼气期',
+            coordinates_x INTEGER DEFAULT 0,
+            coordinates_y INTEGER DEFAULT 0,
+            resources TEXT,
+            connected_locations TEXT,
+            is_safe_zone INTEGER DEFAULT 0,
+            discovered_by TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        """)
 
-            # 玩家位置表
-            await self._ensure_table_exists("player_locations", """
-                user_id TEXT PRIMARY KEY,
-                current_location_id INTEGER NOT NULL,
-                last_move_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                total_moves INTEGER DEFAULT 0,
-                total_exploration_score INTEGER DEFAULT 0
-            """)
+        # 玩家位置表
+        await self._ensure_table_exists("player_locations", """
+            user_id TEXT PRIMARY KEY,
+            current_location_id INTEGER NOT NULL,
+            last_move_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            total_moves INTEGER DEFAULT 0,
+            total_exploration_score INTEGER DEFAULT 0
+        """)
 
-            # 玩家功法表
-            await self._ensure_table_exists("player_cultivation_methods", """
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id TEXT NOT NULL,
-                method_id TEXT NOT NULL,
-                is_main INTEGER DEFAULT 0,
-                proficiency INTEGER DEFAULT 0,
-                proficiency_stage TEXT DEFAULT '初窥门径',
-                compatibility INTEGER DEFAULT 50,
-                learned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                last_practice TIMESTAMP
-            """)
+        # 玩家功法表
+        await self._ensure_table_exists("player_cultivation_methods", """
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL,
+            method_id TEXT NOT NULL,
+            is_main INTEGER DEFAULT 0,
+            proficiency INTEGER DEFAULT 0,
+            proficiency_stage TEXT DEFAULT '初窥门径',
+            compatibility INTEGER DEFAULT 50,
+            learned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            last_practice TIMESTAMP
+        """)
 
-            # 功法技能关联表
-            await self._ensure_table_exists("method_skills", """
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                method_id TEXT NOT NULL,
-                skill_name TEXT NOT NULL,
-                skill_type TEXT,
-                unlock_proficiency INTEGER DEFAULT 0,
-                element TEXT,
-                mp_cost INTEGER DEFAULT 10,
-                cooldown INTEGER DEFAULT 0,
-                base_damage INTEGER DEFAULT 0,
-                effect_description TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            """)
+        # 功法技能关联表
+        await self._ensure_table_exists("method_skills", """
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            method_id TEXT NOT NULL,
+            skill_name TEXT NOT NULL,
+            skill_type TEXT,
+            unlock_proficiency INTEGER DEFAULT 0,
+            element TEXT,
+            mp_cost INTEGER DEFAULT 10,
+            cooldown INTEGER DEFAULT 0,
+            base_damage INTEGER DEFAULT 0,
+            effect_description TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        """)
 
-            # 坊市物品表
-            await self._ensure_table_exists("market_items", """
-                id TEXT PRIMARY KEY,
-                seller_id TEXT NOT NULL,
-                item_type TEXT NOT NULL,
-                item_id TEXT NOT NULL,
-                item_name TEXT NOT NULL,
-                quality TEXT,
-                description TEXT,
-                price INTEGER NOT NULL,
-                quantity INTEGER DEFAULT 1,
-                attributes TEXT,
-                status TEXT DEFAULT 'active',
-                listed_at TEXT NOT NULL,
-                created_at TEXT,
-                sold_at TEXT
-            """)
+        # 坊市物品表
+        await self._ensure_table_exists("market_items", """
+            id TEXT PRIMARY KEY,
+            seller_id TEXT NOT NULL,
+            item_type TEXT NOT NULL,
+            item_id TEXT NOT NULL,
+            item_name TEXT NOT NULL,
+            quality TEXT,
+            description TEXT,
+            price INTEGER NOT NULL,
+            quantity INTEGER DEFAULT 1,
+            attributes TEXT,
+            status TEXT DEFAULT 'active',
+            listed_at TEXT NOT NULL,
+            created_at TEXT,
+            sold_at TEXT
+        """)
 
-            # 坊市交易记录表
-            await self._ensure_table_exists("market_transactions", """
-                id TEXT PRIMARY KEY,
-                listing_id TEXT NOT NULL,
-                seller_id TEXT NOT NULL,
-                buyer_id TEXT NOT NULL,
-                item_type TEXT NOT NULL,
-                item_id TEXT NOT NULL,
-                price INTEGER NOT NULL,
-                quantity INTEGER NOT NULL,
-                tax INTEGER DEFAULT 0,
-                transaction_time TEXT NOT NULL
-            """)
+        # 坊市交易记录表
+        await self._ensure_table_exists("market_transactions", """
+            id TEXT PRIMARY KEY,
+            listing_id TEXT NOT NULL,
+            seller_id TEXT NOT NULL,
+            buyer_id TEXT NOT NULL,
+            item_type TEXT NOT NULL,
+            item_id TEXT NOT NULL,
+            price INTEGER NOT NULL,
+            quantity INTEGER NOT NULL,
+            tax INTEGER DEFAULT 0,
+            transaction_time TEXT NOT NULL
+        """)
 
-            # ===== 灵宠系统表 =====
-            # 灵宠模板表
-            logger.info("开始创建/更新表: pets")
-            await self._ensure_table_exists("pets", """
-                id INTEGER PRIMARY KEY,
-                name TEXT NOT NULL,
-                pet_type TEXT NOT NULL,
-                rarity TEXT NOT NULL,
-                description TEXT,
-                base_attributes TEXT NOT NULL,
-                growth_rate REAL DEFAULT 1.0,
-                max_level INTEGER DEFAULT 50,
-                element TEXT,
-                evolution_to INTEGER,
-                capture_difficulty INTEGER DEFAULT 50,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            """)
+        # ===== 灵宠系统表 =====
+        # 灵宠模板表
+        logger.info("开始创建/更新表: pets")
+        await self._ensure_table_exists("pets", """
+            id INTEGER PRIMARY KEY,
+            name TEXT NOT NULL,
+            pet_type TEXT NOT NULL,
+            rarity TEXT NOT NULL,
+            description TEXT,
+            base_attributes TEXT NOT NULL,
+            growth_rate REAL DEFAULT 1.0,
+            max_level INTEGER DEFAULT 50,
+            element TEXT,
+            evolution_to INTEGER,
+            capture_difficulty INTEGER DEFAULT 50,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        """)
 
-            # 玩家灵宠表
-            await self._ensure_table_exists("player_pets", """
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id TEXT NOT NULL,
-                pet_id INTEGER NOT NULL,
-                pet_name TEXT NOT NULL,
-                level INTEGER DEFAULT 1,
-                experience INTEGER DEFAULT 0,
-                is_active INTEGER DEFAULT 0,
-                intimacy INTEGER DEFAULT 0,
-                battle_count INTEGER DEFAULT 0,
-                acquired_from TEXT NOT NULL,
-                acquired_at TIMESTAMP NOT NULL,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            """)
+        # 玩家灵宠表
+        await self._ensure_table_exists("player_pets", """
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL,
+            pet_id INTEGER NOT NULL,
+            pet_name TEXT NOT NULL,
+            level INTEGER DEFAULT 1,
+            experience INTEGER DEFAULT 0,
+            is_active INTEGER DEFAULT 0,
+            intimacy INTEGER DEFAULT 0,
+            battle_count INTEGER DEFAULT 0,
+            acquired_from TEXT NOT NULL,
+            acquired_at TIMESTAMP NOT NULL,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        """)
 
-            # 灵宠秘境记录表
-            await self._ensure_table_exists("pet_secret_realms", """
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id TEXT UNIQUE NOT NULL,
-                realm_level INTEGER DEFAULT 1,
-                exploration_count INTEGER DEFAULT 0,
-                last_exploration_at TIMESTAMP,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            """)
+        # 灵宠秘境记录表
+        await self._ensure_table_exists("pet_secret_realms", """
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT UNIQUE NOT NULL,
+            realm_level INTEGER DEFAULT 1,
+            exploration_count INTEGER DEFAULT 0,
+            last_exploration_at TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        """)
 
-            # 探索故事历史表
-            await self._ensure_table_exists("exploration_stories", """
-                id TEXT PRIMARY KEY,
-                user_id TEXT NOT NULL,
-                location_id INTEGER NOT NULL,
-                story_type TEXT NOT NULL,
-                story_title TEXT NOT NULL,
-                story_content TEXT NOT NULL,
-                choices TEXT,
-                selected_choice TEXT,
-                outcome TEXT,
-                rewards TEXT,
-                consequences TEXT,
-                is_completed INTEGER DEFAULT 0,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                completed_at TIMESTAMP
-            """)
+        # 探索故事历史表
+        await self._ensure_table_exists("exploration_stories", """
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            location_id INTEGER NOT NULL,
+            story_type TEXT NOT NULL,
+            story_title TEXT NOT NULL,
+            story_content TEXT NOT NULL,
+            choices TEXT,
+            selected_choice TEXT,
+            outcome TEXT,
+            rewards TEXT,
+            consequences TEXT,
+            is_completed INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            completed_at TIMESTAMP
+        """)
 
-            # 玩家故事状态表（用于跨多次探索的连续剧情）
-            await self._ensure_table_exists("player_story_states", """
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id TEXT NOT NULL,
-                story_arc_id TEXT NOT NULL,
-                current_chapter INTEGER DEFAULT 1,
-                total_chapters INTEGER DEFAULT 1,
-                state_data TEXT,
-                last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE(user_id, story_arc_id)
-            """)
+        # 玩家故事状态表（用于跨多次探索的连续剧情）
+        await self._ensure_table_exists("player_story_states", """
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL,
+            story_arc_id TEXT NOT NULL,
+            current_chapter INTEGER DEFAULT 1,
+            total_chapters INTEGER DEFAULT 1,
+            state_data TEXT,
+            last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(user_id, story_arc_id)
+        """)
 
-            # 探索后果记录表（记录玩家选择的长期影响）
-            await self._ensure_table_exists("exploration_consequences", """
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id TEXT NOT NULL,
-                story_id TEXT NOT NULL,
-                consequence_type TEXT NOT NULL,
-                consequence_value TEXT NOT NULL,
-                expires_at TIMESTAMP,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            """)
+        # 探索后果记录表（记录玩家选择的长期影响）
+        await self._ensure_table_exists("exploration_consequences", """
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL,
+            story_id TEXT NOT NULL,
+            consequence_type TEXT NOT NULL,
+            consequence_value TEXT NOT NULL,
+            expires_at TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        """)
 
-            logger.info("✓ 所有表结构创建/更新完成")
+        logger.info("✓ 所有表结构创建/更新完成")
         except Exception as e:
             logger.error(f"创建或更新表结构时出错: {e}", exc_info=True)
             raise
