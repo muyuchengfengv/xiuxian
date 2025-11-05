@@ -3,6 +3,7 @@ AstrBot 修仙世界插件
 完整的修仙主题游戏插件,支持修炼、战斗、宗门、AI生成世界
 """
 
+from typing import Dict, Optional, List
 from astrbot.api.event import filter, AstrMessageEvent, MessageEventResult
 from astrbot.api.star import Context, Star, register
 from astrbot.api import logger
