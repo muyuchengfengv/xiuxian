@@ -258,14 +258,17 @@ class BreakthroughSystem:
 
         # 判断是小境界提升还是大境界突破
         if old_realm == player.realm:
-            # 小境界提升：属性按比例增长（每级25%的境界属性加成）
-            level_ratio = 0.25
+            # 小境界提升：属性按比例增长（每级50%的境界属性加成）
+            # 这样初期→中期→后期→大圆满共增长150%，确保属性成长合理
+            level_ratio = 0.50
             hp_bonus = int(attribute_bonus.get("max_hp", 0) * level_ratio)
             mp_bonus = int(attribute_bonus.get("max_mp", 0) * level_ratio)
             attack_bonus = int(attribute_bonus.get("attack", 0) * level_ratio)
             defense_bonus = int(attribute_bonus.get("defense", 0) * level_ratio)
         else:
             # 大境界突破：获得完整的境界属性加成
+            # 由于之前小境界已经增长了150%，大境界突破再给100%
+            # 总共是250%，确保大境界突破有明显提升
             hp_bonus = attribute_bonus.get("max_hp", 0)
             mp_bonus = attribute_bonus.get("max_mp", 0)
             attack_bonus = attribute_bonus.get("attack", 0)
