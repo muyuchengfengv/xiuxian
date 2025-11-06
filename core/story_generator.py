@@ -110,9 +110,9 @@ class LLMStoryGenerator:
                 # 调用text_chat方法
                 llm_response = await provider.text_chat(
                     prompt=prompt,
-                    session_id=user_id,
+                    session_id=f"{user_id}_exploration_{uuid.uuid4().hex[:8]}",
                     contexts=[],  # 探索故事不需要历史上下文
-                    system_prompt="你是一个修仙世界的故事大师，擅长创作充满想象力和趣味性的修仙探索故事。请严格按照JSON格式返回结果。"
+                    system_prompt="你是一个修仙世界的故事大师，擅长创作充满想象力和趣味性的修仙探索故事。请严格按照JSON格式返回结果。重要：每次请求都是独立的新事件，不要引用或关联之前的任何事件内容。"
                 )
 
                 # 获取响应文本
