@@ -237,7 +237,8 @@ class WorldManager:
         }
 
         # 探索触发事件概率（基于地点危险等级和灵气浓度）
-        event_chance = 0.4 + (location.danger_level * 0.05) + (location.spirit_energy_density / 1000.0)
+        # 提高基础概率从0.4到0.7，让玩家更容易遇到事件
+        event_chance = 0.7 + (location.danger_level * 0.05) + (location.spirit_energy_density / 1000.0)
 
         if random.random() < event_chance:
             # 使用LLM生成动态故事

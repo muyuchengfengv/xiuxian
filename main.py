@@ -3582,8 +3582,8 @@ class XiuxianPlugin(Star):
                 lines.append(f"📍 探索继续... (第 {session['round']}/{session['max_rounds']} 轮)")
                 lines.append("")
 
-                # 生成新的事件
-                next_result = await self.world_mgr.explore_location(location)
+                # 生成新的事件（使用队长ID）
+                next_result = await self.world_mgr.explore_current_location(team['leader_id'])
 
                 if next_result.get('event'):
                     next_event_info = next_result['event']
@@ -3754,15 +3754,24 @@ class XiuxianPlugin(Star):
                 yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
                 return
 
-            # 检查是否有进行中的探索会话
-            existing_session = self._get_exploration_session(user_id)
-            if existing_session and existing_session['status'] == 'active':
-                yield event.plain_result(
-                    f"⚠️ 你正在 {existing_session['location'].name} 探索中！\n\n"
-                    f"📍 当前轮次：{existing_session['round']}/{existing_session['max_rounds']}\n"
-                    f"💡 请先完成当前的选择，或使用 /结束探索 结束当前探索"
-                )
-                return
+            # 强制清理可能残留的旧会话和事件
+            if user_id in self._exploration_sessions:
+                old_session = self._exploration_sessions[user_id]
+                if old_session.get('status') == 'active':
+                    # 有进行中的会话，提示用户
+                    yield event.plain_result(
+                        f"⚠️ 你正在 {old_session['location'].name} 探索中！\n\n"
+                        f"📍 当前轮次：{old_session['round']}/{old_session['max_rounds']}\n"
+                        f"💡 请先完成当前的选择，或使用 /结束探索 结束当前探索"
+                    )
+                    return
+                else:
+                    # 清理非active状态的旧会话
+                    self._end_exploration_session(user_id)
+
+            # 清理可能残留的事件数据
+            if user_id in self._exploration_events:
+                del self._exploration_events[user_id]
 
             result = await self.world_mgr.explore_current_location(user_id)
             location = result['location']
@@ -3834,12 +3843,21 @@ class XiuxianPlugin(Star):
                         )
                         lines.append(f"💔 生命值 -{damage}")
             else:
-                # 没有触发事件
-                lines.append("🌫️ 什么也没有发现...")
+                # 没有触发事件，但给玩家一些环境描述
+                ambient_descriptions = [
+                    f"🌫️ 你在{location.name}四处探索，微风拂过，带来丝丝灵气...",
+                    f"🌫️ {location.name}一片寂静，远处隐约传来不明的声响...",
+                    f"🌫️ 你仔细搜寻着{location.name}，但这次似乎运气欠佳...",
+                    f"🌫️ {location.name}的灵气在你周围流转，你感觉有什么即将发生...",
+                    f"🌫️ 你在{location.name}驻足片刻，调整呼吸，准备继续前行..."
+                ]
+                import random
+                lines.append(random.choice(ambient_descriptions))
                 lines.append("")
-                lines.append("💡 提示：探索有概率触发各种事件")
-                lines.append("   • 地点危险等级越高，事件越丰富")
-                lines.append("   • 灵气浓度越高，好事件概率越大")
+                lines.append("💡 提示：")
+                lines.append("   • 再次探索可能会有新发现")
+                lines.append("   • 危险等级越高，奇遇越精彩")
+                lines.append("   • 尝试前往不同的地点探索")
 
             yield event.plain_result("\n".join(lines))
 
@@ -4452,7 +4470,7 @@ class XiuxianPlugin(Star):
 
             # 触发第一个探索事件
             # 这里使用队长作为代表触发事件
-            result = await self.world_mgr.explore_location(location)
+            result = await self.world_mgr.explore_current_location(team['leader_id'])
 
             lines = [
                 f"🔍 队伍开始探索 {location.name}",
@@ -4530,10 +4548,18 @@ class XiuxianPlugin(Star):
                         if rewards.get('cultivation', 0) > 0:
                             lines.append(f"   ✨ 修为 +{rewards['cultivation']} (每人)")
             else:
-                # 没有触发事件
-                lines.append("🌫️ 什么也没有发现...")
+                # 没有触发事件，但给队伍一些环境描述
+                ambient_descriptions = [
+                    f"🌫️ 队伍在{location.name}四处探索，一路上交流着修炼心得...",
+                    f"🌫️ {location.name}一片平静，队伍保持警惕继续前进...",
+                    f"🌫️ 队伍在{location.name}搜寻了一番，暂时没有发现异常...",
+                    f"🌫️ {location.name}的灵气缓缓流动，队员们感觉机缘将至...",
+                    f"🌫️ 队伍在{location.name}短暂休整，准备继续深入探索..."
+                ]
+                import random
+                lines.append(random.choice(ambient_descriptions))
                 lines.append("")
-                lines.append("💡 提示：探索有概率触发各种事件")
+                lines.append("💡 提示：继续探索可能会有新发现")
 
             yield event.plain_result("\n".join(lines))
 
