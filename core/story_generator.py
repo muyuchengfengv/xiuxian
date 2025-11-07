@@ -43,7 +43,8 @@ class LLMStoryGenerator:
         user_id: str,
         location: Location,
         player: Player,
-        enable_ai: bool = True
+        enable_ai: bool = True,
+        custom_session_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         生成探索故事
@@ -53,6 +54,7 @@ class LLMStoryGenerator:
             location: 当前地点
             player: 玩家对象
             enable_ai: 是否启用AI生成
+            custom_session_id: 自定义session_id（可选，用于队伍探索）
 
         Returns:
             故事字典
@@ -345,9 +347,9 @@ class LLMStoryGenerator:
         await self.db.execute("""
             INSERT INTO exploration_stories (
                 id, user_id, location_id, story_type, story_title,
-                story_content, choices, rewards, consequences,
+                story_content, choices, has_choice, rewards, consequences,
                 is_completed, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             story['id'],
             story['user_id'],
@@ -356,6 +358,7 @@ class LLMStoryGenerator:
             story['story_title'],
             story['story_content'],
             story['choices'],
+            story['has_choice'],
             story['rewards'],
             story['consequences'],
             story['is_completed'],

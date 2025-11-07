@@ -686,6 +686,7 @@ class DatabaseManager:
                 story_title TEXT NOT NULL,
                 story_content TEXT NOT NULL,
                 choices TEXT,
+                has_choice INTEGER DEFAULT 0,
                 selected_choice TEXT,
                 outcome TEXT,
                 rewards TEXT,

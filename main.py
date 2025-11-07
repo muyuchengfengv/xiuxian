@@ -117,6 +117,12 @@ class XiuxianPlugin(Star):
         # 探索会话管理 {user_id: session_data}
         self._exploration_sessions = {}
 
+        # 队伍探索事件临时存储 {team_id: event_data}
+        self._team_exploration_events = {}
+
+        # 队伍探索会话管理 {team_id: session_data}
+        self._team_exploration_sessions = {}
+
         logger.info("修仙世界插件已加载 (使用懒加载模式)")
 
     @filter.on_astrbot_loaded()
@@ -3337,6 +3343,293 @@ class XiuxianPlugin(Star):
         if user_id in self._exploration_events:
             del self._exploration_events[user_id]
 
+    # ========== 队伍探索会话管理辅助方法 ==========
+
+    def _create_team_exploration_session(self, team_id: str, location, members: List) -> Dict:
+        """创建队伍探索会话"""
+        import time
+        session = {
+            'team_id': team_id,
+            'start_time': time.time(),
+            'last_activity_time': time.time(),
+            'location': location,
+            'members': [m['user_id'] for m in members],
+            'round': 1,
+            'max_rounds': 5,  # 最多5轮
+            'status': 'active',
+            'story_history': []
+        }
+        self._team_exploration_sessions[team_id] = session
+        return session
+
+    def _get_team_exploration_session(self, team_id: str) -> Optional[Dict]:
+        """获取队伍探索会话"""
+        import time
+        session = self._team_exploration_sessions.get(team_id)
+        if session:
+            # 检查是否超时（120秒）
+            if time.time() - session['last_activity_time'] > 120:
+                self._end_team_exploration_session(team_id)
+                return None
+        return session
+
+    def _update_team_session_activity(self, team_id: str):
+        """更新队伍会话活动时间"""
+        import time
+        if team_id in self._team_exploration_sessions:
+            self._team_exploration_sessions[team_id]['last_activity_time'] = time.time()
+
+    def _end_team_exploration_session(self, team_id: str):
+        """结束队伍探索会话"""
+        if team_id in self._team_exploration_sessions:
+            del self._team_exploration_sessions[team_id]
+        if team_id in self._team_exploration_events:
+            del self._team_exploration_events[team_id]
+
+    async def _handle_team_choice(self, event: AstrMessageEvent, user_id: str, team: Dict, message_text: str):
+        """处理队伍探索的选择"""
+        team_id = team['id']
+
+        # 检查队伍会话
+        session = self._get_team_exploration_session(team_id)
+        if not session:
+            yield event.plain_result("⚠️ 队伍探索会话已超时\n\n💡 队长可以使用 /开始探索 重新开始")
+            return
+
+        # 检查是否有待选择的事件
+        if team_id not in self._team_exploration_events:
+            yield event.plain_result("⚠️ 当前没有需要选择的事件")
+            return
+
+        # 解析选择编号
+        parts = message_text.split()
+        if len(parts) < 2:
+            yield event.plain_result("⚠️ 请输入选择的编号\n\n💡 使用方法：/选择 [编号]\n   例如：/选择 1")
+            return
+
+        try:
+            choice_num = int(parts[1])
+        except ValueError:
+            yield event.plain_result("⚠️ 请输入有效的编号！")
+            return
+
+        # 获取事件数据
+        event_data = self._team_exploration_events[team_id]
+        event_info = event_data['event']
+        location = event_data['location']
+        choices = event_info.get('choices', [])
+        choices_made = event_data['choices_made']
+
+        # 检查是否选择了"结束探索"
+        num_story_choices = len(choices)
+        if choice_num == num_story_choices + 1:
+            # 队员选择结束探索
+            choices_made[user_id] = 'end'
+
+            # 获取队伍成员
+            members = await self.team_mgr.get_team_members(team_id, status='joined')
+            remaining = [m['user_id'] for m in members if m['user_id'] not in choices_made]
+
+            if remaining:
+                yield event.plain_result(
+                    f"✅ 你选择了结束探索\n\n"
+                    f"⏳ 等待其他成员选择... ({len(choices_made)}/{len(members)})"
+                )
+            else:
+                # 所有成员都选择了，统计结果
+                end_count = sum(1 for c in choices_made.values() if c == 'end')
+                if end_count > len(members) / 2:
+                    # 多数人选择结束
+                    self._end_team_exploration_session(team_id)
+                    await self.team_mgr.finish_team_exploration(team_id)
+                    yield event.plain_result(
+                        "🚪 队伍决定结束探索，离开了此地\n\n"
+                        f"📍 本次探索轮次：{session['round']}/{session['max_rounds']}\n"
+                        "💡 使用 /开始探索 开始新的探索"
+                    )
+                else:
+                    # 继续探索，忽略结束投票
+                    yield event.plain_result("⏳ 等待其他成员选择...")
+            return
+
+        # 检查选择是否有效
+        choice_index = choice_num - 1
+        if choice_index < 0 or choice_index >= len(choices):
+            yield event.plain_result(f"⚠️ 无效的选择编号！请选择 1-{num_story_choices + 1}")
+            return
+
+        # 记录选择
+        choices_made[user_id] = choice_index
+
+        # 获取队伍成员
+        members = await self.team_mgr.get_team_members(team_id, status='joined')
+        remaining = [m['user_id'] for m in members if m['user_id'] not in choices_made]
+
+        if remaining:
+            # 还有成员未选择
+            yield event.plain_result(
+                f"✅ 你选择了：{choices[choice_index]['text']}\n\n"
+                f"⏳ 等待其他成员选择... ({len(choices_made)}/{len(members)})"
+            )
+            return
+
+        # 所有成员都做了选择，统计结果
+        # 排除"结束探索"的选择
+        valid_choices = [c for c in choices_made.values() if c != 'end']
+
+        # 使用投票方式，选择最多人选的选项，如果平票则使用队长的选择
+        from collections import Counter
+        choice_counts = Counter(valid_choices)
+        most_common = choice_counts.most_common()
+
+        if most_common:
+            final_choice_index = most_common[0][0]
+
+            # 如果有多个选项票数相同，使用队长的选择
+            if len(most_common) > 1 and most_common[0][1] == most_common[1][1]:
+                leader_choice = choices_made.get(team['leader_id'])
+                if leader_choice is not None and leader_choice != 'end':
+                    final_choice_index = leader_choice
+
+            selected_choice = choices[final_choice_index]
+
+            # 更新队伍会话活动时间
+            self._update_team_session_activity(team_id)
+
+            # 处理选择结果（使用队长作为代表）
+            result = await self.world_mgr.handle_event_choice(
+                team['leader_id'],
+                event_info,
+                selected_choice,
+                location
+            )
+
+            # 清除当前事件
+            del self._team_exploration_events[team_id]
+
+            # 显示结果
+            lines = [
+                f"✓ 队伍选择了：{selected_choice['text']}",
+                "─" * 40,
+                ""
+            ]
+
+            # 显示投票情况
+            lines.append("📊 投票结果：")
+            for i, choice in enumerate(choices):
+                vote_count = sum(1 for c in valid_choices if c == i)
+                if vote_count > 0:
+                    lines.append(f"   {choice['text']}: {vote_count}票")
+            lines.append("")
+
+            # 显示结果描述
+            result_text = result.get('outcome_text') or result.get('message')
+            if result_text:
+                lines.append(result_text)
+                lines.append("")
+
+            # 发放奖励给所有队员
+            rewards = result.get('rewards', {})
+            if rewards:
+                lines.append("")
+                lines.append("📦 队伍获得奖励：")
+
+                for member in members:
+                    member_id = member['user_id']
+                    if 'spirit_stone' in rewards and rewards['spirit_stone'] != 0:
+                        spirit_stone_change = rewards['spirit_stone']
+                        await self.db.execute(
+                            "UPDATE players SET spirit_stone = MAX(0, spirit_stone + ?) WHERE user_id = ?",
+                            (spirit_stone_change, member_id)
+                        )
+
+                    if 'cultivation' in rewards and rewards['cultivation'] != 0:
+                        cultivation_change = rewards['cultivation']
+                        await self.db.execute(
+                            "UPDATE players SET cultivation = MAX(0, cultivation + ?) WHERE user_id = ?",
+                            (cultivation_change, member_id)
+                        )
+
+                if rewards.get('spirit_stone', 0) > 0:
+                    lines.append(f"   💎 灵石 +{rewards['spirit_stone']} (每人)")
+                if rewards.get('cultivation', 0) > 0:
+                    lines.append(f"   ✨ 修为 +{rewards['cultivation']} (每人)")
+
+            # 处理伤害（所有队员都受伤）
+            if result.get('damage', 0) > 0:
+                damage = result['damage']
+                lines.append("")
+                lines.append(f"💔 队伍受到伤害 -{damage} 生命值 (每人)")
+
+                for member in members:
+                    member_id = member['user_id']
+                    await self.db.execute(
+                        "UPDATE players SET hp = MAX(1, hp - ?) WHERE user_id = ?",
+                        (damage, member_id)
+                    )
+
+            # 检查是否继续探索
+            session['round'] += 1
+            session['story_history'].append({
+                'choice': selected_choice['text'],
+                'result': result_text
+            })
+
+            if session['round'] <= session['max_rounds']:
+                # 继续探索
+                lines.append("")
+                lines.append("─" * 40)
+                lines.append(f"📍 探索继续... (第 {session['round']}/{session['max_rounds']} 轮)")
+                lines.append("")
+
+                # 生成新的事件
+                next_result = await self.world_mgr.explore_location(location)
+
+                if next_result.get('event'):
+                    next_event_info = next_result['event']
+                    lines.append(f"📖 {next_event_info['title']}")
+                    lines.append("")
+                    lines.append(next_event_info['description'])
+                    lines.append("")
+
+                    if next_result.get('has_choice') and next_event_info.get('choices'):
+                        lines.append("🎯 队伍需要做出选择：")
+                        for i, choice in enumerate(next_event_info['choices'], 1):
+                            lines.append(f"{i}. {choice['text']} - {choice['description']}")
+
+                        lines.append(f"{len(next_event_info['choices']) + 1}. 🚪 结束探索 - 离开此地")
+                        lines.append("")
+                        lines.append(f"💡 使用 /选择 [编号] 做出选择")
+                        lines.append(f"⏱️ 120秒内无操作将自动结束探索")
+
+                        # 暂存新的事件数据
+                        self._team_exploration_events[team_id] = {
+                            'event': next_event_info,
+                            'location': location,
+                            'session': session,
+                            'choices_made': {}
+                        }
+                    else:
+                        # 自动结算，探索结束
+                        self._end_team_exploration_session(team_id)
+                        await self.team_mgr.finish_team_exploration(team_id)
+                        lines.append("")
+                        lines.append("✅ 队伍探索结束")
+                else:
+                    # 没有新事件，探索结束
+                    self._end_team_exploration_session(team_id)
+                    await self.team_mgr.finish_team_exploration(team_id)
+                    lines.append("")
+                    lines.append("✅ 队伍探索结束")
+            else:
+                # 达到最大轮次，探索结束
+                self._end_team_exploration_session(team_id)
+                await self.team_mgr.finish_team_exploration(team_id)
+                lines.append("")
+                lines.append(f"✅ 队伍探索结束 - 已完成全部 {session['max_rounds']} 轮探索")
+
+            yield event.plain_result("\n".join(lines))
+
     # ========== 世界探索系统命令 ==========
 
     @filter.command("地点", alias={"locations", "where", "位置"})
@@ -3567,6 +3860,14 @@ class XiuxianPlugin(Star):
         try:
             if not self._check_initialized():
                 yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
+            # 优先检查用户是否在队伍探索中
+            team = await self.team_mgr.get_player_active_team(user_id)
+            if team and team['status'] == 'active':
+                # 处理队伍探索的选择
+                async for result in self._handle_team_choice(event, user_id, team, message_text):
+                    yield result
                 return
 
             # 检查会话是否超时
@@ -4026,6 +4327,220 @@ class XiuxianPlugin(Star):
             logger.error(f"离开队伍失败: {e}", exc_info=True)
             yield event.plain_result(f"离开队伍失败：{str(e)}")
 
+    @filter.command("查看队伍", alias={"team_status", "队伍状态", "我的队伍"})
+    async def team_status_cmd(self, event: AstrMessageEvent):
+        """查看当前队伍状态"""
+        user_id = event.get_sender_id()
+
+        try:
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
+            # 获取玩家当前队伍
+            team = await self.team_mgr.get_player_active_team(user_id)
+            if not team:
+                yield event.plain_result("⚠️ 你当前不在任何队伍中\n\n💡 使用 /组队探索 @user 创建队伍")
+                return
+
+            # 获取队伍成员
+            members = await self.team_mgr.get_team_members(team['id'], status='joined')
+
+            # 获取地点信息
+            location = await self.world_mgr.get_location(team['location_id'])
+
+            # 构建显示信息
+            lines = [
+                "👥 队伍状态",
+                "─" * 40,
+                ""
+            ]
+
+            # 队伍基本信息
+            status_emoji = {
+                'waiting': '⏳',
+                'active': '🔍',
+                'finished': '✅'
+            }
+            status_text = {
+                'waiting': '等待中',
+                'active': '探索中',
+                'finished': '已完成'
+            }
+
+            lines.append(f"📍 地点：{location.name if location else '未知'}")
+            lines.append(f"{status_emoji.get(team['status'], '❓')} 状态：{status_text.get(team['status'], '未知')}")
+            lines.append("")
+
+            # 队伍成员列表
+            lines.append("👥 成员列表：")
+            for i, member in enumerate(members, 1):
+                member_id = member['user_id']
+                is_leader = member_id == team['leader_id']
+                leader_mark = " 👑 (队长)" if is_leader else ""
+
+                # 获取玩家信息
+                try:
+                    player = await self.player_mgr.get_player(member_id)
+                    name = player.name if player else member_id
+                    realm = player.realm if player else "未知"
+                    lines.append(f"   {i}. {name} [{realm}]{leader_mark}")
+                except:
+                    lines.append(f"   {i}. {member_id}{leader_mark}")
+
+            lines.append("")
+
+            # 根据状态显示提示
+            if team['status'] == 'waiting':
+                if team['leader_id'] == user_id:
+                    lines.append("💡 你是队长，可以使用 /开始探索 开始队伍探索")
+                else:
+                    lines.append("⏳ 等待队长开始探索...")
+            elif team['status'] == 'active':
+                lines.append("🔍 探索进行中...")
+                lines.append("💡 队伍成员可以一起做出选择")
+
+            yield event.plain_result("\n".join(lines))
+
+        except Exception as e:
+            logger.error(f"查看队伍状态失败: {e}", exc_info=True)
+            yield event.plain_result(f"查看队伍状态失败：{str(e)}")
+
+    @filter.command("开始探索", alias={"start_team_explore", "队伍探索"})
+    async def start_team_explore_cmd(self, event: AstrMessageEvent):
+        """队长开始队伍探索"""
+        user_id = event.get_sender_id()
+
+        try:
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
+            # 获取玩家当前队伍
+            team = await self.team_mgr.get_player_active_team(user_id)
+            if not team:
+                yield event.plain_result("⚠️ 你当前不在任何队伍中\n\n💡 使用 /组队探索 @user 创建队伍")
+                return
+
+            # 检查是否是队长
+            if team['leader_id'] != user_id:
+                yield event.plain_result("⚠️ 只有队长可以开始探索！")
+                return
+
+            # 检查队伍状态
+            if team['status'] != 'waiting':
+                yield event.plain_result("⚠️ 队伍已经开始探索或已结束！")
+                return
+
+            # 获取队伍成员
+            members = await self.team_mgr.get_team_members(team['id'], status='joined')
+            if len(members) < 2:
+                yield event.plain_result("⚠️ 队伍至少需要2名成员才能开始探索！\n\n💡 使用 /查看队伍 查看当前成员")
+                return
+
+            # 获取地点信息
+            location = await self.world_mgr.get_location(team['location_id'])
+            if not location:
+                yield event.plain_result("❌ 探索地点无效")
+                return
+
+            # 开始队伍探索
+            await self.team_mgr.start_team_exploration(team['id'])
+
+            # 创建队伍探索会话
+            team_session = self._create_team_exploration_session(team['id'], location, members)
+
+            # 触发第一个探索事件
+            # 这里使用队长作为代表触发事件
+            result = await self.world_mgr.explore_location(location)
+
+            lines = [
+                f"🔍 队伍开始探索 {location.name}",
+                "─" * 40,
+                ""
+            ]
+
+            # 显示队伍成员
+            lines.append("👥 探索队伍：")
+            for member in members:
+                try:
+                    player = await self.player_mgr.get_player(member['user_id'])
+                    name = player.name if player else member['user_id']
+                    realm = player.realm if player else "未知"
+                    is_leader = member['user_id'] == team['leader_id']
+                    leader_mark = " 👑" if is_leader else ""
+                    lines.append(f"   • {name} [{realm}]{leader_mark}")
+                except:
+                    lines.append(f"   • {member['user_id']}")
+            lines.append("")
+
+            # 如果有事件
+            if result.get('event'):
+                event_info = result['event']
+                lines.append(f"📖 {event_info['title']}")
+                lines.append("")
+                lines.append(event_info['description'])
+                lines.append("")
+
+                # 如果需要玩家做出选择
+                if result.get('has_choice') and event_info.get('choices'):
+                    lines.append("🎯 队伍需要做出选择：")
+                    for i, choice in enumerate(event_info['choices'], 1):
+                        lines.append(f"{i}. {choice['text']} - {choice['description']}")
+
+                    # 添加"结束探索"选项
+                    lines.append(f"{len(event_info['choices']) + 1}. 🚪 结束探索 - 离开此地")
+                    lines.append("")
+                    lines.append(f"💡 使用 /选择 [编号] 做出选择 (例如：/选择 1)")
+                    lines.append(f"⏱️ 120秒内无操作将自动结束探索")
+
+                    # 暂存事件数据供后续选择使用
+                    self._team_exploration_events[team['id']] = {
+                        'event': event_info,
+                        'location': location,
+                        'session': team_session,
+                        'choices_made': {}  # 记录每个成员的选择
+                    }
+                else:
+                    # 自动结算的事件
+                    auto_result = event_info.get('auto_result', {})
+                    if auto_result.get('message'):
+                        lines.append(auto_result['message'])
+
+                    # 发放奖励给所有队员
+                    rewards = auto_result.get('rewards', {})
+                    if rewards:
+                        lines.append("")
+                        lines.append("📦 队伍获得奖励：")
+                        for member in members:
+                            member_id = member['user_id']
+                            if rewards.get('spirit_stone', 0) > 0:
+                                await self.db.execute(
+                                    "UPDATE players SET spirit_stone = spirit_stone + ? WHERE user_id = ?",
+                                    (rewards['spirit_stone'], member_id)
+                                )
+                            if rewards.get('cultivation', 0) > 0:
+                                await self.db.execute(
+                                    "UPDATE players SET cultivation = cultivation + ? WHERE user_id = ?",
+                                    (rewards['cultivation'], member_id)
+                                )
+
+                        if rewards.get('spirit_stone', 0) > 0:
+                            lines.append(f"   💎 灵石 +{rewards['spirit_stone']} (每人)")
+                        if rewards.get('cultivation', 0) > 0:
+                            lines.append(f"   ✨ 修为 +{rewards['cultivation']} (每人)")
+            else:
+                # 没有触发事件
+                lines.append("🌫️ 什么也没有发现...")
+                lines.append("")
+                lines.append("💡 提示：探索有概率触发各种事件")
+
+            yield event.plain_result("\n".join(lines))
+
+        except Exception as e:
+            logger.error(f"开始队伍探索失败: {e}", exc_info=True)
+            yield event.plain_result(f"开始队伍探索失败：{str(e)}")
+
     @filter.command("地点详情", alias={"location_info", "地点信息"})
     async def location_info_cmd(self, event: AstrMessageEvent):
         """查看地点详细信息"""
@@ -4081,7 +4596,7 @@ class XiuxianPlugin(Star):
 装备: /储物袋 /装备[#] /卸下[槽位] /强化[#] /获得装备[类型]
 技能: /技能 /使用技能[技能名]
 世界: /地点 /地图 /前往[#] /探索 /地点详情 /结束探索
-组队: /组队探索[@用户] /查看邀请 /接受邀请[#] /拒绝邀请[#] /离开队伍
+组队: /组队探索[@用户] /查看邀请 /接受邀请[#] /拒绝邀请[#] /查看队伍 /开始探索 /离开队伍
 职业: /学习职业[类型] /我的职业
 炼丹: /丹方列表 /炼丹[#]
 炼器: /图纸列表 /炼器[#]
