@@ -665,6 +665,7 @@ class MarketSystem:
         ]
 
         added_count = 0
+        updated_count = 0
         for item in npc_items:
             # 检查该物品是否已存在
             existing = await self.db.fetchone(
@@ -673,40 +674,56 @@ class MarketSystem:
             )
 
             if existing:
-                # 物品已存在，跳过
-                continue
-
-            # 物品不存在，添加到坊市
-            listing_id = str(uuid.uuid4())
-            await self.db.execute(
-                """
-                INSERT INTO market_items (
-                    id, seller_id, item_type, item_id, item_name, quality,
-                    description, price, quantity, attributes, status, listed_at, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    listing_id,
-                    "npc",
-                    item["item_type"],
-                    item["item_id"],
-                    item["item_name"],
-                    item["quality"],
-                    item["description"],
-                    item["price"],
-                    item["quantity"],
-                    item["attributes"],
-                    "active",
-                    datetime.now().isoformat(),
-                    datetime.now().isoformat()
+                # 物品已存在，更新描述、价格、属性等信息
+                await self.db.execute(
+                    """
+                    UPDATE market_items
+                    SET item_name = ?, quality = ?, description = ?,
+                        price = ?, attributes = ?
+                    WHERE seller_id = 'npc' AND item_id = ?
+                    """,
+                    (
+                        item["item_name"],
+                        item["quality"],
+                        item["description"],
+                        item["price"],
+                        item["attributes"],
+                        item["item_id"]
+                    )
                 )
-            )
-            added_count += 1
+                updated_count += 1
+            else:
+                # 物品不存在，添加到坊市
+                listing_id = str(uuid.uuid4())
+                await self.db.execute(
+                    """
+                    INSERT INTO market_items (
+                        id, seller_id, item_type, item_id, item_name, quality,
+                        description, price, quantity, attributes, status, listed_at, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        listing_id,
+                        "npc",
+                        item["item_type"],
+                        item["item_id"],
+                        item["item_name"],
+                        item["quality"],
+                        item["description"],
+                        item["price"],
+                        item["quantity"],
+                        item["attributes"],
+                        "active",
+                        datetime.now().isoformat(),
+                        datetime.now().isoformat()
+                    )
+                )
+                added_count += 1
 
-        if added_count > 0:
-            logger.info(f"NPC坊市物品初始化完成，新增 {added_count} 种物品")
+        if added_count > 0 or updated_count > 0:
+            logger.info(f"NPC坊市物品初始化完成，新增 {added_count} 种物品，更新 {updated_count} 种物品")
         else:
-            logger.info("NPC坊市物品已是最新，无需添加")
+            logger.info("NPC坊市物品已是最新，无需添加或更新")
 
     async def list_item(self, user_id: str, item_type: str, item_id: str,
                        price: int, quantity: int = 1) -> Dict:

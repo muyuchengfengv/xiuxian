@@ -5363,6 +5363,29 @@ AI: /AI生成[类型] /AI历史 /AI帮助
             logger.error(f"查看我的上架失败: {e}", exc_info=True)
             yield event.plain_result(f"查看失败：{str(e)}")
 
+    @filter.command("刷新坊市", alias={"refresh_market", "更新坊市"})
+    async def refresh_market_cmd(self, event: AstrMessageEvent):
+        """刷新NPC坊市商品（更新描述和新增商品）"""
+        try:
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
+            yield event.plain_result("🔄 正在刷新NPC坊市商品...")
+
+            # 调用市场系统的初始化方法来更新NPC商品
+            await self.market_sys._init_npc_items()
+
+            yield event.plain_result(
+                "✅ NPC坊市商品已刷新完成！\n\n"
+                "🎉 新增的商品和更新的描述已生效\n\n"
+                "💡 使用 /坊市 查看最新商品"
+            )
+
+        except Exception as e:
+            logger.error(f"刷新坊市失败: {e}", exc_info=True)
+            yield event.plain_result(f"刷新失败：{str(e)}")
+
     # ========== 灵宠系统命令 ==========
 
     @filter.command("领取灵宠", alias={"claim_pet", "领宠"})
