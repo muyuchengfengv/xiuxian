@@ -175,13 +175,14 @@ class ItemManager:
         logger.info(f"玩家 {user_id} 消耗物品: {item_name} x{quantity}")
         return True
 
-    async def use_item(self, user_id: str, item_name: str) -> Dict[str, Any]:
+    async def use_item(self, user_id: str, item_name: str, quantity: int = 1) -> Dict[str, Any]:
         """
         使用物品
 
         Args:
             user_id: 用户ID
             item_name: 物品名称
+            quantity: 使用数量，默认为1
 
         Returns:
             使用结果字典，包含：
@@ -195,7 +196,12 @@ class ItemManager:
             PlayerNotFoundError: 玩家不存在
             ItemNotFoundError: 物品不存在
             ItemCannotUseError: 物品无法使用
+            InsufficientItemError: 物品数量不足
         """
+        # 参数验证
+        if quantity < 1:
+            raise ItemCannotUseError("使用数量必须大于0")
+
         # 获取玩家
         player = await self.player_mgr.get_player_or_error(user_id)
 
@@ -203,6 +209,10 @@ class ItemManager:
         item = await self.get_item(user_id, item_name)
         if not item:
             raise ItemNotFoundError(f"储物袋中没有 {item_name}")
+
+        # 检查数量是否足够
+        if item['quantity'] < quantity:
+            raise InsufficientItemError(f"{item_name} 数量不足（需要{quantity}，拥有{item['quantity']}）")
 
         # 解析效果
         effect = json.loads(item['effect']) if item['effect'] else {}
@@ -212,25 +222,25 @@ class ItemManager:
 
         if item_type == 'pill':
             # 丹药效果
-            result = await self._use_pill(player, item, effect)
+            result = await self._use_pill(player, item, effect, quantity)
         elif item_type == 'talisman':
             # 符箓效果
-            result = await self._use_talisman(player, item, effect)
+            result = await self._use_talisman(player, item, effect, quantity)
         elif item_type == 'consumable':
             # 消耗品效果
-            result = await self._use_consumable(player, item, effect)
+            result = await self._use_consumable(player, item, effect, quantity)
         else:
             raise ItemCannotUseError(f"{item_name} 无法使用（类型：{item_type}）")
 
         # 如果使用成功，消耗物品
         if result['success']:
-            await self.consume_item(user_id, item_name, 1)
+            await self.consume_item(user_id, item_name, quantity)
             # 更新玩家数据
             await self.player_mgr.update_player(player)
 
         return result
 
-    async def _use_pill(self, player: Player, item: Dict[str, Any], effect: Dict[str, Any]) -> Dict[str, Any]:
+    async def _use_pill(self, player: Player, item: Dict[str, Any], effect: Dict[str, Any], quantity: int = 1) -> Dict[str, Any]:
         """
         使用丹药
 
@@ -238,6 +248,7 @@ class ItemManager:
             player: 玩家对象
             item: 物品信息
             effect: 效果字典
+            quantity: 使用数量
 
         Returns:
             使用结果
@@ -247,7 +258,7 @@ class ItemManager:
 
         # 回复生命值
         if 'hp_restore' in effect:
-            hp_restore = effect['hp_restore']
+            hp_restore = effect['hp_restore'] * quantity
             old_hp = player.hp
             player.hp = min(player.max_hp, player.hp + hp_restore)
             actual_restore = player.hp - old_hp
@@ -256,7 +267,7 @@ class ItemManager:
 
         # 回复法力值
         if 'mp_restore' in effect:
-            mp_restore = effect['mp_restore']
+            mp_restore = effect['mp_restore'] * quantity
             old_mp = player.mp
             player.mp = min(player.max_mp, player.mp + mp_restore)
             actual_restore = player.mp - old_mp
@@ -265,7 +276,7 @@ class ItemManager:
 
         # 增加修为
         if 'cultivation' in effect:
-            cultivation_gain = effect['cultivation']
+            cultivation_gain = effect['cultivation'] * quantity
             player.cultivation += cultivation_gain
             messages.append(f"修为 +{cultivation_gain}")
             effects_applied['cultivation'] = cultivation_gain
@@ -276,9 +287,10 @@ class ItemManager:
             for stat_name, value in stats.items():
                 if hasattr(player, stat_name):
                     old_value = getattr(player, stat_name)
-                    setattr(player, stat_name, old_value + value)
-                    messages.append(f"{stat_name} +{value}")
-                    effects_applied[f'permanent_{stat_name}'] = value
+                    total_value = value * quantity
+                    setattr(player, stat_name, old_value + total_value)
+                    messages.append(f"{stat_name} +{total_value}")
+                    effects_applied[f'permanent_{stat_name}'] = total_value
 
         # 临时BUFF（暂时只记录，实际应用需要buff系统）
         if 'temporary_buff' in effect:
@@ -292,7 +304,9 @@ class ItemManager:
             messages.append(f"触发特殊效果：{special}")
             effects_applied['special'] = special
 
-        message = f"使用 {item['item_name']}，" + "，".join(messages)
+        # 构建消息
+        quantity_text = f" x{quantity}" if quantity > 1 else ""
+        message = f"使用 {item['item_name']}{quantity_text}，" + "，".join(messages)
 
         return {
             'success': True,
@@ -300,7 +314,7 @@ class ItemManager:
             'effects': effects_applied
         }
 
-    async def _use_talisman(self, player: Player, item: Dict[str, Any], effect: Dict[str, Any]) -> Dict[str, Any]:
+    async def _use_talisman(self, player: Player, item: Dict[str, Any], effect: Dict[str, Any], quantity: int = 1) -> Dict[str, Any]:
         """
         使用符箓
 
@@ -308,6 +322,7 @@ class ItemManager:
             player: 玩家对象
             item: 物品信息
             effect: 效果字典
+            quantity: 使用数量
 
         Returns:
             使用结果
@@ -317,13 +332,13 @@ class ItemManager:
 
         # 攻击型符箓
         if effect.get('type') == 'attack':
-            damage = effect.get('damage', 0)
+            damage = effect.get('damage', 0) * quantity
             messages.append(f"释放攻击符箓，造成 {damage} 点伤害")
             effects_applied['damage'] = damage
 
         # 防御型符箓
         elif effect.get('type') == 'defense':
-            shield = effect.get('shield', 0)
+            shield = effect.get('shield', 0) * quantity
             duration = effect.get('duration', 0)
             messages.append(f"获得 {shield} 点护盾，持续 {duration} 回合")
             effects_applied['shield'] = shield
@@ -332,7 +347,7 @@ class ItemManager:
         # 辅助型符箓
         elif effect.get('type') == 'support':
             buff_type = effect.get('buff_type', '')
-            buff_value = effect.get('buff_value', 0)
+            buff_value = effect.get('buff_value', 0) * quantity
             duration = effect.get('duration', 0)
             messages.append(f"{buff_type} +{buff_value}，持续 {duration} 回合")
             effects_applied['buff_type'] = buff_type
@@ -347,7 +362,7 @@ class ItemManager:
 
         # 探测符
         elif effect.get('type') == 'detect':
-            detect_range = effect.get('range', 100)
+            detect_range = effect.get('range', 100) * quantity
             messages.append(f"探测周围 {detect_range} 米范围")
             effects_applied['detect_range'] = detect_range
 
@@ -357,7 +372,9 @@ class ItemManager:
             messages.append(description)
             effects_applied = effect
 
-        message = f"使用 {item['item_name']}，" + "，".join(messages)
+        # 构建消息
+        quantity_text = f" x{quantity}" if quantity > 1 else ""
+        message = f"使用 {item['item_name']}{quantity_text}，" + "，".join(messages)
 
         return {
             'success': True,
@@ -365,7 +382,7 @@ class ItemManager:
             'effects': effects_applied
         }
 
-    async def _use_consumable(self, player: Player, item: Dict[str, Any], effect: Dict[str, Any]) -> Dict[str, Any]:
+    async def _use_consumable(self, player: Player, item: Dict[str, Any], effect: Dict[str, Any], quantity: int = 1) -> Dict[str, Any]:
         """
         使用其他消耗品
 
@@ -373,6 +390,7 @@ class ItemManager:
             player: 玩家对象
             item: 物品信息
             effect: 效果字典
+            quantity: 使用数量
 
         Returns:
             使用结果
@@ -382,14 +400,14 @@ class ItemManager:
 
         # 经验道具
         if 'experience' in effect:
-            exp_gain = effect['experience']
+            exp_gain = effect['experience'] * quantity
             # 这里可以添加经验系统的逻辑
             messages.append(f"获得经验 {exp_gain}")
             effects_applied['experience'] = exp_gain
 
         # 灵石道具
         if 'spirit_stone' in effect:
-            stone_gain = effect['spirit_stone']
+            stone_gain = effect['spirit_stone'] * quantity
             player.spirit_stone += stone_gain
             messages.append(f"灵石 +{stone_gain}")
             effects_applied['spirit_stone'] = stone_gain
@@ -398,7 +416,9 @@ class ItemManager:
         if 'description' in effect:
             messages.append(effect['description'])
 
-        message = f"使用 {item['item_name']}，" + "，".join(messages) if messages else f"使用了 {item['item_name']}"
+        # 构建消息
+        quantity_text = f" x{quantity}" if quantity > 1 else ""
+        message = f"使用 {item['item_name']}{quantity_text}，" + "，".join(messages) if messages else f"使用了 {item['item_name']}{quantity_text}"
 
         return {
             'success': True,

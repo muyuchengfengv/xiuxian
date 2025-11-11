@@ -101,10 +101,10 @@ class CardGenerator(ImageGenerator):
         Returns:
             PIL Image对象
         """
-        # 卡片尺寸 - 增大并调整比例，让内容更大
-        width, height = 1000, 700
-        padding = 50
-        content_padding = 60  # 内容区域内边距
+        # 卡片尺寸 - 调整为更适合QQ显示的尺寸
+        width, height = 800, 650
+        padding = 40
+        content_padding = 50  # 内容区域内边距
 
         # 创建简洁的渐变背景
         image = Image.new('RGBA', (width, height), self.colors['bg_main'])
@@ -265,22 +265,23 @@ class CardGenerator(ImageGenerator):
         max_mp = player_data.get('max_mp', 100)
         attack = player_data.get('attack', 0)
         defense = player_data.get('defense', 0)
+        spirit_stone = player_data.get('spirit_stone', 0)
 
         left_x = content_padding
         right_x = width // 2 + 30
-        line_height = 55  # 45 -> 55
+        line_height = 50  # 调整行高
 
         # 第一行：生命值和法力值
         draw.text(
             (left_x, y),
             f"生命  {format_number(hp)} / {format_number(max_hp)}",
-            font=self.get_font(32),  # 24 -> 32
+            font=self.get_font(28),  # 调整字体大小
             fill=self.colors['hp_color']
         )
         draw.text(
             (right_x, y),
             f"法力  {format_number(mp)} / {format_number(max_mp)}",
-            font=self.get_font(32),  # 24 -> 32
+            font=self.get_font(28),
             fill=self.colors['mp_color']
         )
         y += line_height
@@ -289,14 +290,24 @@ class CardGenerator(ImageGenerator):
         draw.text(
             (left_x, y),
             f"攻击力  {format_number(attack)}",
-            font=self.get_font(32),  # 24 -> 32
+            font=self.get_font(28),
             fill=self.colors['text_primary']
         )
         draw.text(
             (right_x, y),
             f"防御力  {format_number(defense)}",
-            font=self.get_font(32),  # 24 -> 32
+            font=self.get_font(28),
             fill=self.colors['text_primary']
+        )
+        y += line_height
+
+        # 第三行：灵石数量（居中显示）
+        draw.text(
+            (width // 2, y),
+            f"💎 灵石  {format_number(spirit_stone)}",
+            font=self.get_font(28),
+            fill=(255, 215, 0),  # 金色
+            anchor='mt'
         )
 
         return image

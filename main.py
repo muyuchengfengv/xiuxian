@@ -451,6 +451,7 @@ class XiuxianPlugin(Star):
                         'defense': player.defense,
                         'spirit_root': player.spirit_root,
                         'spirit_root_quality': player.spirit_root_quality,
+                        'spirit_stone': player.spirit_stone,  # 添加灵石数量
                     }
 
                     # 生成卡片
@@ -839,6 +840,62 @@ class XiuxianPlugin(Star):
         except Exception as e:
             logger.error(f"查看闭关信息失败: {e}", exc_info=True)
             yield event.plain_result(f"查看闭关信息失败：{str(e)}")
+
+    @filter.command("休息", alias={"恢复", "回复"})
+    async def rest_cmd(self, event: AstrMessageEvent):
+        """休息恢复血量和法力"""
+        user_id = event.get_sender_id()
+
+        try:
+            # 检查插件是否已初始化
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
+            # 获取玩家信息
+            player = await self.player_mgr.get_player_or_error(user_id)
+
+            # 检查是否已满
+            if player.hp >= player.max_hp and player.mp >= player.max_mp:
+                yield event.plain_result("✨ 道友气血充盈，无需休息")
+                return
+
+            # 计算恢复量（恢复50%的最大值）
+            hp_restore = int(player.max_hp * 0.5)
+            mp_restore = int(player.max_mp * 0.5)
+
+            old_hp = player.hp
+            old_mp = player.mp
+
+            # 恢复血量和法力
+            player.hp = min(player.max_hp, player.hp + hp_restore)
+            player.mp = min(player.max_mp, player.mp + mp_restore)
+
+            actual_hp_restore = player.hp - old_hp
+            actual_mp_restore = player.mp - old_mp
+
+            # 保存玩家数据
+            await self.player_mgr.update_player(player)
+
+            result_lines = [
+                "🌙 休息片刻，恢复精力",
+                "",
+                f"❤️ 生命值恢复：+{actual_hp_restore} ({old_hp} → {player.hp})",
+                f"💙 法力值恢复：+{actual_mp_restore} ({old_mp} → {player.mp})",
+                "",
+                f"📊 当前状态：",
+                f"   生命值：{player.hp}/{player.max_hp}",
+                f"   法力值：{player.mp}/{player.max_mp}"
+            ]
+
+            yield event.plain_result("\n".join(result_lines))
+            logger.info(f"玩家 {user_id} 休息恢复：HP+{actual_hp_restore}, MP+{actual_mp_restore}")
+
+        except PlayerNotFoundError as e:
+            yield event.plain_result(str(e))
+        except Exception as e:
+            logger.error(f"休息恢复失败: {e}", exc_info=True)
+            yield event.plain_result(f"休息失败：{str(e)}")
 
     @filter.command("突破", alias={"境界突破", "突破境界"})
     async def breakthrough_cmd(self, event: AstrMessageEvent):
@@ -1517,21 +1574,34 @@ class XiuxianPlugin(Star):
                 yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
                 return
 
-            # 提取物品名称
-            parts = message_text.split(maxsplit=1)
+            # 提取物品名称和数量
+            parts = message_text.split(maxsplit=2)
             if len(parts) < 2:
                 yield event.plain_result(
                     "⚠️ 请指定要使用的物品名称！\n\n"
-                    "💡 使用方法：/使用 [物品名称]\n"
+                    "💡 使用方法：/使用 [物品名称] [数量]\n"
                     "💡 例如：/使用 回血丹\n"
+                    "💡 例如：/使用 回血丹 5\n"
                     "💡 使用 /储物袋 查看拥有的物品"
                 )
                 return
 
             item_name = parts[1].strip()
+            quantity = 1  # 默认使用1个
+
+            # 解析数量参数
+            if len(parts) >= 3:
+                try:
+                    quantity = int(parts[2].strip())
+                    if quantity < 1:
+                        yield event.plain_result("❌ 使用数量必须大于0")
+                        return
+                except ValueError:
+                    yield event.plain_result("❌ 数量参数必须是正整数")
+                    return
 
             # 使用物品
-            result = await self.item_mgr.use_item(user_id, item_name)
+            result = await self.item_mgr.use_item(user_id, item_name, quantity)
 
             if result['success']:
                 yield event.plain_result(f"✅ {result['message']}")
@@ -1541,6 +1611,8 @@ class XiuxianPlugin(Star):
         except PlayerNotFoundError:
             yield event.plain_result("❌ 道友还未踏上修仙之路，请先使用 /修仙 创建角色")
         except ItemNotFoundError as e:
+            yield event.plain_result(f"❌ {str(e)}")
+        except InsufficientItemError as e:
             yield event.plain_result(f"❌ {str(e)}")
         except ItemCannotUseError as e:
             yield event.plain_result(f"⚠️ {str(e)}")
@@ -4690,7 +4762,7 @@ class XiuxianPlugin(Star):
     async def help_cmd(self, event: AstrMessageEvent):
         """显示帮助信息"""
         help_text = """📖修仙世界命令
-基础: /修仙[道号] /属性 /灵根 /突破
+基础: /修仙[道号] /属性 /灵根 /突破 /休息
 修炼: /修炼 单次修炼 | /修炼功法[#] /闭关[时长] /出关 /闭关信息
 战斗: /切磋@用户 /战力 /挑战[等级] /使用技能[技能名]
 装备: /储物袋 /装备[#] /卸下[槽位] /强化[#] /获得装备[类型]
