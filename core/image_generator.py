@@ -80,16 +80,28 @@ class ImageGenerator:
 
     def _load_fonts(self):
         """加载字体文件"""
-        # 默认字体路径（尝试系统字体）
+        # 默认字体路径（优先使用支持中文的字体）
         font_paths = [
+            # 项目字体目录
             self.fonts_dir / "SourceHanSansCN-Regular.otf",  # 思源黑体
             self.fonts_dir / "NotoSansCJK-Regular.ttc",      # Noto Sans CJK
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",  # Linux
-            "/System/Library/Fonts/PingFang.ttc",            # macOS
-            "C:\\Windows\\Fonts\\msyh.ttc",                  # Windows 微软雅黑
+            self.fonts_dir / "SimHei.ttf",                   # 黑体
+            # Linux 系统字体
+            "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",  # 文泉驿正黑
+            "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc", # 文泉驿微米黑
+            "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",  # Noto Sans CJK
+            "/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf",  # Droid Sans Fallback
+            # macOS 系统字体
+            "/System/Library/Fonts/PingFang.ttc",            # 苹方
+            "/System/Library/Fonts/STHeiti Light.ttc",       # 华文黑体
+            # Windows 系统字体
+            "C:\\Windows\\Fonts\\msyh.ttc",                  # 微软雅黑
+            "C:\\Windows\\Fonts\\simhei.ttf",                # 黑体
+            "C:\\Windows\\Fonts\\simsun.ttc",                # 宋体
         ]
 
         self.fonts = {}
+        self.font_path_used = None
 
         # 尝试加载字体
         for size in [12, 14, 16, 18, 20, 24, 28, 32, 36, 48]:
@@ -98,14 +110,28 @@ class ImageGenerator:
                 try:
                     if Path(font_path).exists():
                         self.fonts[size] = ImageFont.truetype(str(font_path), size)
+                        if self.font_path_used is None:
+                            self.font_path_used = font_path
+                            print(f"[CardGenerator] 使用字体: {font_path}")
                         font_loaded = True
                         break
-                except Exception:
+                except Exception as e:
                     continue
 
             if not font_loaded:
-                # 使用默认字体
-                self.fonts[size] = ImageFont.load_default()
+                # 最后尝试使用 PIL 的默认字体（可能不支持中文）
+                try:
+                    # 尝试使用 DejaVuSans 作为备用
+                    self.fonts[size] = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", size)
+                    if self.font_path_used is None:
+                        self.font_path_used = "DejaVuSans"
+                    font_loaded = True
+                except:
+                    # 实在没有就用默认字体（不支持中文）
+                    self.fonts[size] = ImageFont.load_default()
+                    if self.font_path_used is None:
+                        self.font_path_used = "default (no Chinese support)"
+                        print(f"[CardGenerator] 警告：未找到中文字体，将使用默认字体（可能显示为方块）")
 
     def get_font(self, size: int = 16) -> ImageFont.FreeTypeFont:
         """
@@ -221,18 +247,27 @@ class ImageGenerator:
         根据品质获取颜色
 
         Args:
-            quality: 品质名称
+            quality: 品质名称（支持装备品质和灵根品质）
 
         Returns:
             RGB颜色元组
         """
         quality_map = {
+            # 装备品质
             '凡品': 'quality_common',
             '灵品': 'quality_uncommon',
             '宝品': 'quality_rare',
             '仙品': 'quality_epic',
             '神品': 'quality_legendary',
             '道品': 'quality_mythic',
+            '混沌品': 'quality_mythic',
+            # 灵根品质
+            '废灵根': 'quality_common',
+            '杂灵根': 'quality_uncommon',
+            '双灵根': 'quality_rare',
+            '单灵根': 'quality_epic',
+            '变异灵根': 'quality_legendary',
+            '天灵根': 'quality_mythic',
         }
         color_key = quality_map.get(quality, 'quality_common')
         return self.colors[color_key]

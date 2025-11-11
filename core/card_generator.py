@@ -48,8 +48,8 @@ class CardGenerator(ImageGenerator):
         Returns:
             PIL Image对象
         """
-        # 卡片尺寸
-        width, height = 600, 400
+        # 卡片尺寸 - 增大以容纳更多信息
+        width, height = 650, 480
         padding = 30
 
         # 生成背景
@@ -81,18 +81,18 @@ class CardGenerator(ImageGenerator):
         )
 
         # 当前Y坐标
-        y = padding + 20
+        y = padding + 15
 
         # 绘制标题：角色名称
         name = player_data.get('name', '未知')
         draw.text(
             (width // 2, y),
-            f"【{name}】",
+            f"【 {name} 】",
             font=self.get_font(32),
             fill=self.colors['text_accent'],
             anchor='mt'
         )
-        y += 50
+        y += 48
 
         # 绘制境界信息
         realm = player_data.get('realm', '凡人')
@@ -107,16 +107,44 @@ class CardGenerator(ImageGenerator):
             fill=self.colors['text_primary'],
             anchor='mt'
         )
+        y += 45
+
+        # 绘制灵根信息（提前显示，因为很重要）
+        spirit_root = player_data.get('spirit_root', '无')
+        spirit_root_quality = player_data.get('spirit_root_quality', '凡品')
+        quality_color = self.get_quality_color(spirit_root_quality)
+
+        spirit_root_text = f"🌟 {spirit_root}灵根 · {spirit_root_quality}"
+        draw.text(
+            (width // 2, y),
+            spirit_root_text,
+            font=self.get_font(18),
+            fill=quality_color,
+            anchor='mt'
+        )
         y += 40
 
         # 绘制修为进度条
         cultivation = player_data.get('cultivation', 0)
         max_cultivation = player_data.get('max_cultivation', 1000)
         progress = cultivation / max_cultivation if max_cultivation > 0 else 0
+        progress_percent = progress * 100
 
+        # 格式化数字（如果很大就用K/M/B）
+        def format_number(n):
+            if n >= 1_000_000_000:
+                return f"{n/1_000_000_000:.1f}B"
+            elif n >= 1_000_000:
+                return f"{n/1_000_000:.1f}M"
+            elif n >= 1_000:
+                return f"{n/1_000:.1f}K"
+            else:
+                return str(n)
+
+        cultivation_text = f"修为: {format_number(cultivation)} / {format_number(max_cultivation)} ({progress_percent:.1f}%)"
         draw.text(
             (padding + 20, y),
-            f"修为进度：{cultivation}/{max_cultivation}",
+            cultivation_text,
             font=self.get_font(16),
             fill=self.colors['text_secondary']
         )
@@ -126,72 +154,78 @@ class CardGenerator(ImageGenerator):
             draw,
             (padding + 20, y),
             width=width - padding * 2 - 40,
-            height=20,
+            height=22,
             progress=progress,
             fill_color=self.colors['exp_color']
         )
         y += 35
 
-        # 绘制生命值和法力值
+        # 绘制生命值和法力值（两列显示）
         hp = player_data.get('hp', 100)
         max_hp = player_data.get('max_hp', 100)
         mp = player_data.get('mp', 100)
         max_mp = player_data.get('max_mp', 100)
 
-        # 生命值
-        hp_text = f"❤️ 生命：{hp}/{max_hp}"
-        draw.text(
-            (padding + 20, y),
-            hp_text,
-            font=self.get_font(18),
-            fill=self.colors['hp_color']
-        )
-        y += 30
-
-        # 法力值
-        mp_text = f"💙 法力：{mp}/{max_mp}"
-        draw.text(
-            (padding + 20, y),
-            mp_text,
-            font=self.get_font(18),
-            fill=self.colors['mp_color']
-        )
-        y += 40
-
-        # 绘制属性信息（两列）
-        attack = player_data.get('attack', 0)
-        defense = player_data.get('defense', 0)
-
         left_x = padding + 20
         right_x = width // 2 + 20
 
-        # 攻击力
+        # 生命值（左列）
+        hp_text = f"❤️  生命: {format_number(hp)} / {format_number(max_hp)}"
         draw.text(
             (left_x, y),
-            f"⚔️ 攻击：{attack}",
-            font=self.get_font(18),
+            hp_text,
+            font=self.get_font(17),
+            fill=self.colors['hp_color']
+        )
+
+        # 法力值（右列）
+        mp_text = f"💙  法力: {format_number(mp)} / {format_number(max_mp)}"
+        draw.text(
+            (right_x, y),
+            mp_text,
+            font=self.get_font(17),
+            fill=self.colors['mp_color']
+        )
+        y += 35
+
+        # 绘制攻击和防御（两列显示）
+        attack = player_data.get('attack', 0)
+        defense = player_data.get('defense', 0)
+
+        # 攻击力（左列）
+        attack_text = f"⚔️  攻击力: {format_number(attack)}"
+        draw.text(
+            (left_x, y),
+            attack_text,
+            font=self.get_font(17),
             fill=self.colors['text_primary']
         )
 
-        # 防御力
+        # 防御力（右列）
+        defense_text = f"🛡️  防御力: {format_number(defense)}"
         draw.text(
             (right_x, y),
-            f"🛡️ 防御：{defense}",
-            font=self.get_font(18),
+            defense_text,
+            font=self.get_font(17),
             fill=self.colors['text_primary']
         )
         y += 40
 
-        # 绘制灵根信息
-        spirit_root = player_data.get('spirit_root', '无')
-        spirit_root_quality = player_data.get('spirit_root_quality', '凡品')
-        quality_color = self.get_quality_color(spirit_root_quality)
+        # 绘制装饰性分隔线
+        line_y = height - padding - 25
+        draw.line(
+            [(padding + 20, line_y), (width - padding - 20, line_y)],
+            fill=self.colors['border_default'],
+            width=1
+        )
 
+        # 底部提示文字
+        footer_text = "✨ 修仙之路，道阻且长 ✨"
         draw.text(
-            (width // 2, y),
-            f"🌟 灵根：{spirit_root} ({spirit_root_quality})",
-            font=self.get_font(18),
-            fill=quality_color,
+            (width // 2, height - padding - 10),
+            footer_text,
+            font=self.get_font(14),
+            fill=self.colors['text_secondary'],
             anchor='mt'
         )
 
