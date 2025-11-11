@@ -270,7 +270,9 @@ class DatabaseManager:
 
             in_retreat INTEGER DEFAULT 0,
             retreat_start TIMESTAMP,
-            retreat_duration INTEGER DEFAULT 0
+            retreat_duration INTEGER DEFAULT 0,
+
+            first_nascent_breakthrough INTEGER DEFAULT 0
         """)
 
             # 装备表

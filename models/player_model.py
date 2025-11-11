@@ -62,6 +62,9 @@ class Player:
     retreat_start: Optional[datetime] = None  # 闭关开始时间
     retreat_duration: int = 0  # 闭关时长（小时）
 
+    # 突破记录
+    first_nascent_breakthrough: bool = False  # 是否已经第一次突破到元婴期
+
     def to_dict(self) -> Dict[str, Any]:
         """转换为字典用于数据库存储"""
         data = {
@@ -95,7 +98,8 @@ class Player:
             "updated_at": self.updated_at.isoformat(),
             "in_retreat": self.in_retreat,
             "retreat_start": self.retreat_start.isoformat() if self.retreat_start else None,
-            "retreat_duration": self.retreat_duration
+            "retreat_duration": self.retreat_duration,
+            "first_nascent_breakthrough": self.first_nascent_breakthrough
         }
         return data
 
@@ -131,6 +135,7 @@ class Player:
         # 设置默认值
         data.setdefault("in_retreat", False)
         data.setdefault("retreat_duration", 0)
+        data.setdefault("first_nascent_breakthrough", False)
 
         return cls(**data)
 

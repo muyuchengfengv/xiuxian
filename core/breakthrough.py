@@ -134,9 +134,14 @@ class BreakthroughSystem:
             # 渡劫成功后的突破，直接成功
             await self._perform_breakthrough(player, next_realm_info)
 
+            # 检查是否是首次元婴期突破
+            success_msg = f"🎉 渡劫成功！从 {old_realm} 突破至 {new_realm}！"
+            if next_realm_info['realm'] == "元婴期" and next_realm_info['level'] == 1:
+                success_msg += "\n✨ 凝结元婴，脱胎换骨！全属性获得200%额外提升！"
+
             result = {
                 'success': True,
-                'message': f"🎉 渡劫成功！从 {old_realm} 突破至 {new_realm}！",
+                'message': success_msg,
                 'old_realm': old_realm,
                 'new_realm': new_realm,
                 'breakthrough_rate': 1.0,  # 渡劫成功后100%突破
@@ -170,9 +175,14 @@ class BreakthroughSystem:
             # 突破成功
             await self._perform_breakthrough(player, next_realm_info)
 
+            # 检查是否是首次元婴期突破
+            success_msg = f"🎉 突破成功！从 {old_realm} 突破至 {new_realm}！"
+            if next_realm_info['realm'] == "元婴期" and next_realm_info['level'] == 1:
+                success_msg += "\n✨ 凝结元婴，脱胎换骨！全属性获得200%额外提升！"
+
             result = {
                 'success': True,
-                'message': f"🎉 突破成功！从 {old_realm} 突破至 {new_realm}！",
+                'message': success_msg,
                 'old_realm': old_realm,
                 'new_realm': new_realm,
                 'breakthrough_rate': success_rate,
@@ -280,6 +290,58 @@ class BreakthroughSystem:
         player.attack += attack_bonus
         player.defense += defense_bonus
 
+        # 3.5 检查是否是第一次突破到元婴期，应用200%额外加成
+        is_first_nascent = False
+        if player.realm == "元婴期" and player.realm_level == 1 and not player.first_nascent_breakthrough:
+            is_first_nascent = True
+            player.first_nascent_breakthrough = True
+
+            # 记录当前属性作为基础
+            base_max_hp = player.max_hp
+            base_max_mp = player.max_mp
+            base_attack = player.attack
+            base_defense = player.defense
+            base_constitution = player.constitution
+            base_spiritual_power = player.spiritual_power
+            base_comprehension = player.comprehension
+            base_luck = player.luck
+            base_root_bone = player.root_bone
+
+            # 在原有基础上额外提升200%（即变为原来的3倍）
+            extra_hp = int(base_max_hp * 2.0)
+            extra_mp = int(base_max_mp * 2.0)
+            extra_attack = int(base_attack * 2.0)
+            extra_defense = int(base_defense * 2.0)
+            extra_constitution = int(base_constitution * 2.0)
+            extra_spiritual_power = int(base_spiritual_power * 2.0)
+            extra_comprehension = int(base_comprehension * 2.0)
+            extra_luck = int(base_luck * 2.0)
+            extra_root_bone = int(base_root_bone * 2.0)
+
+            # 应用额外加成
+            player.max_hp += extra_hp
+            player.max_mp += extra_mp
+            player.attack += extra_attack
+            player.defense += extra_defense
+            player.constitution += extra_constitution
+            player.spiritual_power += extra_spiritual_power
+            player.comprehension += extra_comprehension
+            player.luck += extra_luck
+            player.root_bone += extra_root_bone
+
+            logger.info(
+                f"🎉 玩家 {player.name} 首次突破至元婴期！获得200%额外属性加成！\n"
+                f"血量: {base_max_hp} -> {player.max_hp} (+{extra_hp})\n"
+                f"法力: {base_max_mp} -> {player.max_mp} (+{extra_mp})\n"
+                f"攻击: {base_attack} -> {player.attack} (+{extra_attack})\n"
+                f"防御: {base_defense} -> {player.defense} (+{extra_defense})\n"
+                f"体质: {base_constitution} -> {player.constitution} (+{extra_constitution})\n"
+                f"灵力: {base_spiritual_power} -> {player.spiritual_power} (+{extra_spiritual_power})\n"
+                f"悟性: {base_comprehension} -> {player.comprehension} (+{extra_comprehension})\n"
+                f"幸运: {base_luck} -> {player.luck} (+{extra_luck})\n"
+                f"根骨: {base_root_bone} -> {player.root_bone} (+{extra_root_bone})"
+            )
+
         # 突破成功后恢复满血满蓝
         player.hp = player.max_hp
         player.mp = player.max_mp
@@ -298,11 +360,15 @@ class BreakthroughSystem:
         # 7. 保存到数据库
         await self.player_mgr.update_player(player)
 
-        logger.info(
+        log_msg = (
             f"玩家 {player.name} 突破成功, 获得奖励修为: {bonus_cultivation}, "
             f"属性提升 - HP:+{hp_bonus}({player.max_hp}), MP:+{mp_bonus}({player.max_mp}), "
             f"攻击:+{attack_bonus}({player.attack}), 防御:+{defense_bonus}({player.defense})"
         )
+        if is_first_nascent:
+            log_msg += " [首次突破元婴期，已应用200%额外加成]"
+
+        logger.info(log_msg)
 
     async def _handle_breakthrough_failure(self, player: Player):
         """
