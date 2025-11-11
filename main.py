@@ -1143,6 +1143,8 @@ class XiuxianPlugin(Star):
                 lines.append("📜 符箓:")
                 for talisman in talismans:
                     lines.append(f"  • {talisman['item_name']} x{talisman['quantity']}")
+                    if talisman.get('description'):
+                        lines.append(f"    {talisman['description']}")
                 lines.append("")
 
             # 4. 显示材料
@@ -1151,6 +1153,8 @@ class XiuxianPlugin(Star):
                 lines.append("🌿 材料:")
                 for material in materials:
                     lines.append(f"  • {material['item_name']} x{material['quantity']}")
+                    if material.get('description'):
+                        lines.append(f"    {material['description']}")
                 lines.append("")
 
             # 5. 显示其他物品
@@ -1159,6 +1163,8 @@ class XiuxianPlugin(Star):
                 lines.append("🎁 其他:")
                 for item in other_items:
                     lines.append(f"  • {item['item_name']} x{item['quantity']}")
+                    if item.get('description'):
+                        lines.append(f"    {item['description']}")
                 lines.append("")
 
             if not equipment_list and not pills and not talismans and not materials and not other_items:
@@ -5067,10 +5073,15 @@ AI: /AI生成[类型] /AI历史 /AI帮助
                     '仙品': '🟡', '神品': '🔴', '道品': '⭐'
                 }.get(item['quality'], '⚪')
 
-                lines.append(
-                    f"{i}. {quality_emoji} {item['item_name']} x{item['quantity']}\n"
-                    f"   💎 价格: {item['price']} 灵石"
-                )
+                # 构建物品显示信息
+                item_info = f"{i}. {quality_emoji} {item['item_name']} x{item['quantity']}\n"
+                item_info += f"   💎 价格: {item['price']} 灵石\n"
+
+                # 添加物品描述
+                if item.get('description'):
+                    item_info += f"   📝 {item['description']}"
+
+                lines.append(item_info)
 
             lines.extend([
                 "",

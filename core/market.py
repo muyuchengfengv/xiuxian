@@ -92,10 +92,30 @@ class MarketSystem:
             },
             {
                 "item_type": "pill",
+                "item_id": "npc_pill_20",
+                "item_name": "引气丹",
+                "quality": "凡品",
+                "description": "增加100修为，适合炼气初期修士",
+                "price": 50,
+                "quantity": 999,
+                "attributes": json.dumps({"cultivation": 100})
+            },
+            {
+                "item_type": "pill",
+                "item_id": "npc_pill_21",
+                "item_name": "凝气丹",
+                "quality": "凡品",
+                "description": "增加300修为，炼气期常用丹药",
+                "price": 120,
+                "quantity": 800,
+                "attributes": json.dumps({"cultivation": 300})
+            },
+            {
+                "item_type": "pill",
                 "item_id": "npc_pill_3",
                 "item_name": "聚气丹",
                 "quality": "灵品",
-                "description": "增加500修为的炼气期丹药",
+                "description": "增加500修为，助力突破炼气中期",
                 "price": 200,
                 "quantity": 500,
                 "attributes": json.dumps({"cultivation": 500})
@@ -105,10 +125,30 @@ class MarketSystem:
                 "item_id": "npc_pill_4",
                 "item_name": "固元丹",
                 "quality": "灵品",
-                "description": "增加800修为的炼气期丹药",
+                "description": "增加800修为，稳固炼气期修为根基",
                 "price": 350,
                 "quantity": 300,
                 "attributes": json.dumps({"cultivation": 800})
+            },
+            {
+                "item_type": "pill",
+                "item_id": "npc_pill_22",
+                "item_name": "凝血丹",
+                "quality": "灵品",
+                "description": "增加1200修为，适合炼气后期修士",
+                "price": 500,
+                "quantity": 250,
+                "attributes": json.dumps({"cultivation": 1200})
+            },
+            {
+                "item_type": "pill",
+                "item_id": "npc_pill_23",
+                "item_name": "归元丹",
+                "quality": "灵品",
+                "description": "增加1500修为，助力突破筑基",
+                "price": 650,
+                "quantity": 200,
+                "attributes": json.dumps({"cultivation": 1500})
             },
 
             # ===== 筑基期丹药 =====
@@ -152,6 +192,26 @@ class MarketSystem:
                 "quantity": 80,
                 "attributes": json.dumps({"cultivation": 3000})
             },
+            {
+                "item_type": "pill",
+                "item_id": "npc_pill_24",
+                "item_name": "蕴灵丹",
+                "quality": "宝品",
+                "description": "增加4000修为，筑基中期常用",
+                "price": 1800,
+                "quantity": 100,
+                "attributes": json.dumps({"cultivation": 4000})
+            },
+            {
+                "item_type": "pill",
+                "item_id": "npc_pill_25",
+                "item_name": "凝神养气丹",
+                "quality": "宝品",
+                "description": "增加5500修为，稳固筑基后期",
+                "price": 2400,
+                "quantity": 80,
+                "attributes": json.dumps({"cultivation": 5500})
+            },
 
             # ===== 金丹期丹药 =====
             {
@@ -163,6 +223,16 @@ class MarketSystem:
                 "price": 3000,
                 "quantity": 50,
                 "attributes": json.dumps({"cultivation": 8000})
+            },
+            {
+                "item_type": "pill",
+                "item_id": "npc_pill_31",
+                "item_name": "凝丹",
+                "quality": "宝品",
+                "description": "增加10000修为，助力金丹期中期修炼",
+                "price": 4500,
+                "quantity": 40,
+                "attributes": json.dumps({"cultivation": 10000})
             },
             {
                 "item_type": "pill",
@@ -184,6 +254,16 @@ class MarketSystem:
                 "quantity": 20,
                 "attributes": json.dumps({"hp_restore": 5000, "mp_restore": 3000})
             },
+            {
+                "item_type": "pill",
+                "item_id": "npc_pill_26",
+                "item_name": "凝婴丹",
+                "quality": "仙品",
+                "description": "增加15000修为，助力凝结元婴",
+                "price": 10000,
+                "quantity": 35,
+                "attributes": json.dumps({"cultivation": 15000})
+            },
 
             # ===== 元婴期丹药 =====
             {
@@ -195,6 +275,16 @@ class MarketSystem:
                 "price": 15000,
                 "quantity": 20,
                 "attributes": json.dumps({"cultivation": 20000})
+            },
+            {
+                "item_type": "pill",
+                "item_id": "npc_pill_32",
+                "item_name": "婴神丹",
+                "quality": "仙品",
+                "description": "增加25000修为，稳固元婴期中期",
+                "price": 22000,
+                "quantity": 15,
+                "attributes": json.dumps({"cultivation": 25000})
             },
             {
                 "item_type": "pill",
@@ -215,6 +305,70 @@ class MarketSystem:
                 "price": 25000,
                 "quantity": 5,
                 "attributes": json.dumps({"hp_restore": 99999, "mp_restore": 99999})
+            },
+
+            # ===== 化神期丹药 =====
+            {
+                "item_type": "pill",
+                "item_id": "npc_pill_27",
+                "item_name": "化神丹",
+                "quality": "神品",
+                "description": "增加45000修为，化神期必备",
+                "price": 45000,
+                "quantity": 8,
+                "attributes": json.dumps({"cultivation": 45000})
+            },
+            {
+                "item_type": "pill",
+                "item_id": "npc_pill_28",
+                "item_name": "灵虚丹",
+                "quality": "神品",
+                "description": "增加60000修为，稳固化神境界",
+                "price": 60000,
+                "quantity": 5,
+                "attributes": json.dumps({"cultivation": 60000})
+            },
+            {
+                "item_type": "pill",
+                "item_id": "npc_pill_33",
+                "item_name": "神通丹",
+                "quality": "神品",
+                "description": "增加70000修为，化神后期必备",
+                "price": 70000,
+                "quantity": 4,
+                "attributes": json.dumps({"cultivation": 70000})
+            },
+
+            # ===== 渡劫期丹药 =====
+            {
+                "item_type": "pill",
+                "item_id": "npc_pill_29",
+                "item_name": "渡劫丹",
+                "quality": "道品",
+                "description": "增加80000修为，助力渡劫",
+                "price": 80000,
+                "quantity": 3,
+                "attributes": json.dumps({"cultivation": 80000})
+            },
+            {
+                "item_type": "pill",
+                "item_id": "npc_pill_34",
+                "item_name": "飞升丹",
+                "quality": "道品",
+                "description": "增加90000修为，渡劫后期至宝",
+                "price": 90000,
+                "quantity": 3,
+                "attributes": json.dumps({"cultivation": 90000})
+            },
+            {
+                "item_type": "pill",
+                "item_id": "npc_pill_30",
+                "item_name": "太虚化灵丹",
+                "quality": "道品",
+                "description": "增加100000修为，传说中的至宝",
+                "price": 100000,
+                "quantity": 2,
+                "attributes": json.dumps({"cultivation": 100000})
             },
 
             # ===== 属性提升丹药 =====
@@ -385,13 +539,75 @@ class MarketSystem:
                 "attributes": json.dumps({"type": "ink"})
             },
 
+            # ===== 符箓 =====
+            {
+                "item_type": "talisman",
+                "item_id": "npc_tali_1",
+                "item_name": "火球符",
+                "quality": "凡品",
+                "description": "释放火球攻击敌人，造成800点伤害",
+                "price": 100,
+                "quantity": 500,
+                "attributes": json.dumps({"type": "attack", "element": "fire", "damage": 800})
+            },
+            {
+                "item_type": "talisman",
+                "item_id": "npc_tali_2",
+                "item_name": "冰锥符",
+                "quality": "凡品",
+                "description": "释放冰锥攻击敌人，造成800点伤害并有几率冰冻",
+                "price": 120,
+                "quantity": 500,
+                "attributes": json.dumps({"type": "attack", "element": "ice", "damage": 800, "freeze_chance": 0.2})
+            },
+            {
+                "item_type": "talisman",
+                "item_id": "npc_tali_3",
+                "item_name": "雷击符",
+                "quality": "灵品",
+                "description": "召唤雷霆攻击敌人，造成1500点伤害",
+                "price": 300,
+                "quantity": 300,
+                "attributes": json.dumps({"type": "attack", "element": "thunder", "damage": 1500})
+            },
+            {
+                "item_type": "talisman",
+                "item_id": "npc_tali_4",
+                "item_name": "金刚符",
+                "quality": "灵品",
+                "description": "提升500点防御力，持续5回合",
+                "price": 250,
+                "quantity": 300,
+                "attributes": json.dumps({"type": "defense", "defense_bonus": 500, "duration": 5})
+            },
+            {
+                "item_type": "talisman",
+                "item_id": "npc_tali_5",
+                "item_name": "神行符",
+                "quality": "灵品",
+                "description": "大幅提升速度，持续3回合",
+                "price": 200,
+                "quantity": 400,
+                "attributes": json.dumps({"type": "support", "speed_bonus": 30, "duration": 3})
+            },
+            {
+                "item_type": "talisman",
+                "item_id": "npc_tali_6",
+                "item_name": "破甲符",
+                "quality": "宝品",
+                "description": "降低敌人防御力50%，持续3回合",
+                "price": 600,
+                "quantity": 150,
+                "attributes": json.dumps({"type": "debuff", "defense_reduction": 0.5, "duration": 3})
+            },
+
             # ===== 消耗品 =====
             {
                 "item_type": "consumable",
                 "item_id": "npc_cons_1",
                 "item_name": "传送符",
                 "quality": "灵品",
-                "description": "可以传送到随机地点",
+                "description": "可以传送到随机地点，探索新区域",
                 "price": 500,
                 "quantity": 100,
                 "attributes": json.dumps({"type": "teleport", "target_location": "随机地点"})
@@ -405,6 +621,46 @@ class MarketSystem:
                 "price": 800,
                 "quantity": 50,
                 "attributes": json.dumps({"type": "defense", "shield": 1000, "duration": 3})
+            },
+            {
+                "item_type": "consumable",
+                "item_id": "npc_cons_3",
+                "item_name": "经验丹",
+                "quality": "灵品",
+                "description": "增加1000点经验值",
+                "price": 600,
+                "quantity": 80,
+                "attributes": json.dumps({"type": "experience", "exp": 1000})
+            },
+            {
+                "item_type": "consumable",
+                "item_id": "npc_cons_4",
+                "item_name": "灵石袋",
+                "quality": "宝品",
+                "description": "打开获得500-1000灵石",
+                "price": 700,
+                "quantity": 60,
+                "attributes": json.dumps({"type": "currency", "min": 500, "max": 1000})
+            },
+            {
+                "item_type": "consumable",
+                "item_id": "npc_cons_5",
+                "item_name": "探宝符",
+                "quality": "宝品",
+                "description": "增加探索时的宝物发现率，持续1小时",
+                "price": 1000,
+                "quantity": 40,
+                "attributes": json.dumps({"type": "treasure_hunt", "bonus": 0.3, "duration": 3600})
+            },
+            {
+                "item_type": "consumable",
+                "item_id": "npc_cons_6",
+                "item_name": "突破丹",
+                "quality": "仙品",
+                "description": "提升境界突破成功率10%",
+                "price": 5000,
+                "quantity": 20,
+                "attributes": json.dumps({"type": "breakthrough", "success_bonus": 0.1})
             },
         ]
 
