@@ -77,7 +77,7 @@ class MarketSystem:
                 "quality": "凡品",
                 "description": "恢复500点生命值的基础丹药",
                 "price": 50,
-                "quantity": 999,
+                "quantity": 1,
                 "attributes": json.dumps({"hp_restore": 500})
             },
             {
@@ -87,7 +87,7 @@ class MarketSystem:
                 "quality": "凡品",
                 "description": "恢复300点法力值的基础丹药",
                 "price": 50,
-                "quantity": 999,
+                "quantity": 1,
                 "attributes": json.dumps({"mp_restore": 300})
             },
             {
@@ -97,7 +97,7 @@ class MarketSystem:
                 "quality": "凡品",
                 "description": "增加100修为，适合炼气初期修士",
                 "price": 50,
-                "quantity": 999,
+                "quantity": 1,
                 "attributes": json.dumps({"cultivation": 100})
             },
             {
@@ -107,7 +107,7 @@ class MarketSystem:
                 "quality": "凡品",
                 "description": "增加300修为，炼气期常用丹药",
                 "price": 120,
-                "quantity": 800,
+                "quantity": 1,
                 "attributes": json.dumps({"cultivation": 300})
             },
             {
@@ -117,7 +117,7 @@ class MarketSystem:
                 "quality": "灵品",
                 "description": "增加500修为，助力突破炼气中期",
                 "price": 200,
-                "quantity": 500,
+                "quantity": 1,
                 "attributes": json.dumps({"cultivation": 500})
             },
             {
@@ -127,7 +127,7 @@ class MarketSystem:
                 "quality": "灵品",
                 "description": "增加800修为，稳固炼气期修为根基",
                 "price": 350,
-                "quantity": 300,
+                "quantity": 1,
                 "attributes": json.dumps({"cultivation": 800})
             },
             {
@@ -137,7 +137,7 @@ class MarketSystem:
                 "quality": "灵品",
                 "description": "增加1200修为，适合炼气后期修士",
                 "price": 500,
-                "quantity": 250,
+                "quantity": 1,
                 "attributes": json.dumps({"cultivation": 1200})
             },
             {
@@ -147,7 +147,7 @@ class MarketSystem:
                 "quality": "灵品",
                 "description": "增加1500修为，助力突破筑基",
                 "price": 650,
-                "quantity": 200,
+                "quantity": 1,
                 "attributes": json.dumps({"cultivation": 1500})
             },
 
@@ -159,7 +159,7 @@ class MarketSystem:
                 "quality": "灵品",
                 "description": "恢复2000点生命值的高级丹药",
                 "price": 400,
-                "quantity": 200,
+                "quantity": 1,
                 "attributes": json.dumps({"hp_restore": 2000})
             },
             {
@@ -169,7 +169,7 @@ class MarketSystem:
                 "quality": "灵品",
                 "description": "恢复1500点法力值",
                 "price": 350,
-                "quantity": 200,
+                "quantity": 1,
                 "attributes": json.dumps({"mp_restore": 1500})
             },
             {
@@ -179,7 +179,7 @@ class MarketSystem:
                 "quality": "宝品",
                 "description": "增加2000修为的筑基期丹药",
                 "price": 800,
-                "quantity": 150,
+                "quantity": 1,
                 "attributes": json.dumps({"cultivation": 2000})
             },
             {
@@ -189,7 +189,7 @@ class MarketSystem:
                 "quality": "宝品",
                 "description": "增加3000修为，帮助筑基",
                 "price": 1500,
-                "quantity": 80,
+                "quantity": 1,
                 "attributes": json.dumps({"cultivation": 3000})
             },
             {
@@ -199,7 +199,7 @@ class MarketSystem:
                 "quality": "宝品",
                 "description": "增加4000修为，筑基中期常用",
                 "price": 1800,
-                "quantity": 100,
+                "quantity": 1,
                 "attributes": json.dumps({"cultivation": 4000})
             },
             {
@@ -209,7 +209,7 @@ class MarketSystem:
                 "quality": "宝品",
                 "description": "增加5500修为，稳固筑基后期",
                 "price": 2400,
-                "quantity": 80,
+                "quantity": 1,
                 "attributes": json.dumps({"cultivation": 5500})
             },
 
@@ -221,7 +221,7 @@ class MarketSystem:
                 "quality": "宝品",
                 "description": "增加8000修为的金丹期丹药",
                 "price": 3000,
-                "quantity": 50,
+                "quantity": 1,
                 "attributes": json.dumps({"cultivation": 8000})
             },
             {
@@ -231,7 +231,7 @@ class MarketSystem:
                 "quality": "宝品",
                 "description": "增加10000修为，助力金丹期中期修炼",
                 "price": 4500,
-                "quantity": 40,
+                "quantity": 1,
                 "attributes": json.dumps({"cultivation": 10000})
             },
             {
@@ -241,7 +241,7 @@ class MarketSystem:
                 "quality": "仙品",
                 "description": "增加12000修为的金丹期至宝",
                 "price": 6000,
-                "quantity": 30,
+                "quantity": 1,
                 "attributes": json.dumps({"cultivation": 12000})
             },
             {
@@ -251,7 +251,7 @@ class MarketSystem:
                 "quality": "仙品",
                 "description": "恢复5000点生命值和3000点法力值",
                 "price": 5000,
-                "quantity": 20,
+                "quantity": 1,
                 "attributes": json.dumps({"hp_restore": 5000, "mp_restore": 3000})
             },
             {
@@ -261,7 +261,7 @@ class MarketSystem:
                 "quality": "仙品",
                 "description": "增加15000修为，助力凝结元婴",
                 "price": 10000,
-                "quantity": 35,
+                "quantity": 1,
                 "attributes": json.dumps({"cultivation": 15000})
             },
 
@@ -273,7 +273,7 @@ class MarketSystem:
                 "quality": "仙品",
                 "description": "增加20000修为的元婴期丹药",
                 "price": 15000,
-                "quantity": 20,
+                "quantity": 1,
                 "attributes": json.dumps({"cultivation": 20000})
             },
             {
@@ -283,7 +283,7 @@ class MarketSystem:
                 "quality": "仙品",
                 "description": "增加25000修为，稳固元婴期中期",
                 "price": 22000,
-                "quantity": 15,
+                "quantity": 1,
                 "attributes": json.dumps({"cultivation": 25000})
             },
             {
@@ -293,7 +293,7 @@ class MarketSystem:
                 "quality": "神品",
                 "description": "增加30000修为的元婴期至宝",
                 "price": 30000,
-                "quantity": 10,
+                "quantity": 1,
                 "attributes": json.dumps({"cultivation": 30000})
             },
             {
@@ -303,7 +303,7 @@ class MarketSystem:
                 "quality": "神品",
                 "description": "完全恢复生命值和法力值",
                 "price": 25000,
-                "quantity": 5,
+                "quantity": 1,
                 "attributes": json.dumps({"hp_restore": 99999, "mp_restore": 99999})
             },
 
@@ -315,7 +315,7 @@ class MarketSystem:
                 "quality": "神品",
                 "description": "增加45000修为，化神期必备",
                 "price": 45000,
-                "quantity": 8,
+                "quantity": 1,
                 "attributes": json.dumps({"cultivation": 45000})
             },
             {
@@ -325,7 +325,7 @@ class MarketSystem:
                 "quality": "神品",
                 "description": "增加60000修为，稳固化神境界",
                 "price": 60000,
-                "quantity": 5,
+                "quantity": 1,
                 "attributes": json.dumps({"cultivation": 60000})
             },
             {
@@ -335,7 +335,7 @@ class MarketSystem:
                 "quality": "神品",
                 "description": "增加70000修为，化神后期必备",
                 "price": 70000,
-                "quantity": 4,
+                "quantity": 1,
                 "attributes": json.dumps({"cultivation": 70000})
             },
 
@@ -347,7 +347,7 @@ class MarketSystem:
                 "quality": "道品",
                 "description": "增加80000修为，助力渡劫",
                 "price": 80000,
-                "quantity": 3,
+                "quantity": 1,
                 "attributes": json.dumps({"cultivation": 80000})
             },
             {
@@ -357,7 +357,7 @@ class MarketSystem:
                 "quality": "道品",
                 "description": "增加90000修为，渡劫后期至宝",
                 "price": 90000,
-                "quantity": 3,
+                "quantity": 1,
                 "attributes": json.dumps({"cultivation": 90000})
             },
             {
@@ -367,7 +367,7 @@ class MarketSystem:
                 "quality": "道品",
                 "description": "增加100000修为，传说中的至宝",
                 "price": 100000,
-                "quantity": 2,
+                "quantity": 1,
                 "attributes": json.dumps({"cultivation": 100000})
             },
 
@@ -379,7 +379,7 @@ class MarketSystem:
                 "quality": "宝品",
                 "description": "提升体质+5",
                 "price": 2000,
-                "quantity": 30,
+                "quantity": 1,
                 "attributes": json.dumps({"constitution": 5})
             },
             {
@@ -389,7 +389,7 @@ class MarketSystem:
                 "quality": "宝品",
                 "description": "提升悟性+5",
                 "price": 2500,
-                "quantity": 25,
+                "quantity": 1,
                 "attributes": json.dumps({"comprehension": 5})
             },
             {
@@ -399,7 +399,7 @@ class MarketSystem:
                 "quality": "宝品",
                 "description": "提升灵力+5",
                 "price": 2200,
-                "quantity": 25,
+                "quantity": 1,
                 "attributes": json.dumps({"spiritual_power": 5})
             },
 
@@ -547,7 +547,7 @@ class MarketSystem:
                 "quality": "凡品",
                 "description": "释放火球攻击敌人，造成800点伤害",
                 "price": 100,
-                "quantity": 500,
+                "quantity": 1,
                 "attributes": json.dumps({"type": "attack", "element": "fire", "damage": 800})
             },
             {
@@ -557,7 +557,7 @@ class MarketSystem:
                 "quality": "凡品",
                 "description": "释放冰锥攻击敌人，造成800点伤害并有几率冰冻",
                 "price": 120,
-                "quantity": 500,
+                "quantity": 1,
                 "attributes": json.dumps({"type": "attack", "element": "ice", "damage": 800, "freeze_chance": 0.2})
             },
             {
@@ -567,7 +567,7 @@ class MarketSystem:
                 "quality": "灵品",
                 "description": "召唤雷霆攻击敌人，造成1500点伤害",
                 "price": 300,
-                "quantity": 300,
+                "quantity": 1,
                 "attributes": json.dumps({"type": "attack", "element": "thunder", "damage": 1500})
             },
             {
@@ -577,7 +577,7 @@ class MarketSystem:
                 "quality": "灵品",
                 "description": "提升500点防御力，持续5回合",
                 "price": 250,
-                "quantity": 300,
+                "quantity": 1,
                 "attributes": json.dumps({"type": "defense", "defense_bonus": 500, "duration": 5})
             },
             {
@@ -587,7 +587,7 @@ class MarketSystem:
                 "quality": "灵品",
                 "description": "大幅提升速度，持续3回合",
                 "price": 200,
-                "quantity": 400,
+                "quantity": 1,
                 "attributes": json.dumps({"type": "support", "speed_bonus": 30, "duration": 3})
             },
             {
@@ -597,7 +597,7 @@ class MarketSystem:
                 "quality": "宝品",
                 "description": "降低敌人防御力50%，持续3回合",
                 "price": 600,
-                "quantity": 150,
+                "quantity": 1,
                 "attributes": json.dumps({"type": "debuff", "defense_reduction": 0.5, "duration": 3})
             },
 
@@ -609,7 +609,7 @@ class MarketSystem:
                 "quality": "灵品",
                 "description": "可以传送到随机地点，探索新区域",
                 "price": 500,
-                "quantity": 100,
+                "quantity": 1,
                 "attributes": json.dumps({"type": "teleport", "target_location": "随机地点"})
             },
             {
@@ -619,7 +619,7 @@ class MarketSystem:
                 "quality": "宝品",
                 "description": "获得1000点护盾，持续3回合",
                 "price": 800,
-                "quantity": 50,
+                "quantity": 1,
                 "attributes": json.dumps({"type": "defense", "shield": 1000, "duration": 3})
             },
             {
@@ -629,7 +629,7 @@ class MarketSystem:
                 "quality": "灵品",
                 "description": "增加1000点经验值",
                 "price": 600,
-                "quantity": 80,
+                "quantity": 1,
                 "attributes": json.dumps({"type": "experience", "exp": 1000})
             },
             {
@@ -639,7 +639,7 @@ class MarketSystem:
                 "quality": "宝品",
                 "description": "打开获得500-1000灵石",
                 "price": 700,
-                "quantity": 60,
+                "quantity": 1,
                 "attributes": json.dumps({"type": "currency", "min": 500, "max": 1000})
             },
             {
@@ -649,7 +649,7 @@ class MarketSystem:
                 "quality": "宝品",
                 "description": "增加探索时的宝物发现率，持续1小时",
                 "price": 1000,
-                "quantity": 40,
+                "quantity": 1,
                 "attributes": json.dumps({"type": "treasure_hunt", "bonus": 0.3, "duration": 3600})
             },
             {
@@ -659,7 +659,7 @@ class MarketSystem:
                 "quality": "仙品",
                 "description": "提升境界突破成功率10%",
                 "price": 5000,
-                "quantity": 20,
+                "quantity": 1,
                 "attributes": json.dumps({"type": "breakthrough", "success_bonus": 0.1})
             },
         ]
