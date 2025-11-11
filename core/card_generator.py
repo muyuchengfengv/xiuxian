@@ -3,9 +3,11 @@
 实现各类修仙游戏卡片的生成
 """
 
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 from pathlib import Path
 from typing import Optional, Dict, Any, List
+import io
+import urllib.request
 from .image_generator import ImageGenerator
 from .background_generator import BackgroundGenerator
 from .image_config import ImageConfig, get_global_config
@@ -23,6 +25,56 @@ class CardGenerator(ImageGenerator):
         # 加载配置
         self.config = config if config else get_global_config()
 
+    def _get_qq_avatar(self, qq_id: str, size: int = 100) -> Optional[Image.Image]:
+        """
+        获取QQ头像
+
+        Args:
+            qq_id: QQ号
+            size: 头像大小
+
+        Returns:
+            PIL Image对象，获取失败返回None
+        """
+        try:
+            # QQ头像API
+            url = f"https://q1.qlogo.cn/g?b=qq&nk={qq_id}&s=640"
+
+            # 下载头像
+            with urllib.request.urlopen(url, timeout=5) as response:
+                avatar_data = response.read()
+                avatar = Image.open(io.BytesIO(avatar_data))
+                avatar = avatar.convert('RGBA')
+                avatar = avatar.resize((size, size), Image.Resampling.LANCZOS)
+                return avatar
+        except Exception as e:
+            print(f"[CardGenerator] 获取QQ头像失败: {e}")
+            return None
+
+    def _create_circular_avatar(self, avatar: Image.Image) -> Image.Image:
+        """
+        创建圆形头像
+
+        Args:
+            avatar: 原始头像
+
+        Returns:
+            圆形头像
+        """
+        size = avatar.size[0]
+
+        # 创建圆形遮罩
+        mask = Image.new('L', (size, size), 0)
+        mask_draw = ImageDraw.Draw(mask)
+        mask_draw.ellipse((0, 0, size, size), fill=255)
+
+        # 应用遮罩
+        output = Image.new('RGBA', (size, size), (0, 0, 0, 0))
+        output.paste(avatar, (0, 0))
+        output.putalpha(mask)
+
+        return output
+
     def generate_player_card(self, player_data: Dict[str, Any]) -> Image.Image:
         """
         生成角色属性卡片
@@ -31,6 +83,7 @@ class CardGenerator(ImageGenerator):
             player_data: 玩家数据字典
                 {
                     'name': str,        # 角色名称
+                    'user_id': str,     # 用户ID (QQ号)
                     'realm': str,       # 境界
                     'realm_level': int, # 小等级
                     'cultivation': int, # 当前修为
@@ -48,89 +101,69 @@ class CardGenerator(ImageGenerator):
         Returns:
             PIL Image对象
         """
-        # 卡片尺寸 - 增大以容纳更多信息
-        width, height = 650, 480
-        padding = 30
+        # 卡片尺寸 - 增大并调整比例，让内容更大
+        width, height = 800, 600
+        padding = 40
+        content_padding = 50  # 内容区域内边距
 
-        # 生成背景
-        if self.config.get('enable_background', True):
-            theme = self.config.get_theme_for_card('player')
-            direction = self.config.get('gradient_direction', 'radial')
-            add_effects = self.config.get('enable_effects', True)
-
-            image = self.bg_generator.generate_themed_background(
-                width, height, theme, direction, add_effects
-            )
-            # 转换为RGBA以便后续处理
-            if image.mode != 'RGBA':
-                image = image.convert('RGBA')
-        else:
-            # 使用纯色背景
-            image = Image.new('RGBA', (width, height), self.colors['bg_main'])
-
+        # 创建简洁的渐变背景
+        image = Image.new('RGBA', (width, height), self.colors['bg_main'])
         draw = ImageDraw.Draw(image)
 
-        # 绘制卡片背景
+        # 绘制渐变背景（从深蓝到浅紫）
+        for y in range(height):
+            ratio = y / height
+            r = int(26 + (67 - 26) * ratio)
+            g = int(32 + (56 - 32) * ratio)
+            b = int(44 + (202 - 44) * ratio)
+            draw.line([(0, y), (width, y)], fill=(r, g, b))
+
+        # 绘制半透明卡片背景
+        card_overlay = Image.new('RGBA', (width, height), (0, 0, 0, 0))
+        card_draw = ImageDraw.Draw(card_overlay)
         self.draw_rounded_rectangle(
-            draw,
+            card_draw,
             (padding, padding, width - padding, height - padding),
-            radius=15,
-            fill=self.colors['bg_card'],
+            radius=20,
+            fill=(30, 41, 59, 230),  # 半透明背景
             outline=self.colors['border_highlight'],
-            width=2
+            width=3
         )
+        image = Image.alpha_composite(image, card_overlay)
+        draw = ImageDraw.Draw(image)
 
-        # 当前Y坐标
-        y = padding + 15
+        # 获取QQ头像
+        avatar_size = 100
+        user_id = player_data.get('user_id', '')
+        avatar = None
+        if user_id:
+            avatar = self._get_qq_avatar(user_id, avatar_size)
+            if avatar:
+                avatar = self._create_circular_avatar(avatar)
 
-        # 绘制标题：角色名称
-        name = player_data.get('name', '未知')
-        draw.text(
-            (width // 2, y),
-            f"【 {name} 】",
-            font=self.get_font(32),
-            fill=self.colors['text_accent'],
-            anchor='mt'
-        )
-        y += 48
+        # 头像区域
+        avatar_x = content_padding
+        avatar_y = content_padding
 
-        # 绘制境界信息
-        realm = player_data.get('realm', '凡人')
-        realm_level = player_data.get('realm_level', 1)
-        realm_level_map = {1: '初期', 2: '中期', 3: '后期', 4: '大圆满'}
-        realm_level_name = realm_level_map.get(realm_level, f'{realm_level}级')
+        if avatar:
+            # 绘制头像边框
+            border_width = 4
+            self.draw_rounded_rectangle(
+                draw,
+                (avatar_x - border_width, avatar_y - border_width,
+                 avatar_x + avatar_size + border_width, avatar_y + avatar_size + border_width),
+                radius=avatar_size // 2 + border_width,
+                fill=None,
+                outline=self.colors['border_highlight'],
+                width=border_width
+            )
+            # 粘贴头像
+            image.paste(avatar, (avatar_x, avatar_y), avatar)
 
-        draw.text(
-            (width // 2, y),
-            f"⚡ {realm} · {realm_level_name}",
-            font=self.get_font(24),
-            fill=self.colors['text_primary'],
-            anchor='mt'
-        )
-        y += 45
+        # 文字区域起始X坐标
+        text_start_x = content_padding + avatar_size + 30 if avatar else content_padding
 
-        # 绘制灵根信息（提前显示，因为很重要）
-        spirit_root = player_data.get('spirit_root', '无')
-        spirit_root_quality = player_data.get('spirit_root_quality', '凡品')
-        quality_color = self.get_quality_color(spirit_root_quality)
-
-        spirit_root_text = f"🌟 {spirit_root}灵根 · {spirit_root_quality}"
-        draw.text(
-            (width // 2, y),
-            spirit_root_text,
-            font=self.get_font(18),
-            fill=quality_color,
-            anchor='mt'
-        )
-        y += 40
-
-        # 绘制修为进度条
-        cultivation = player_data.get('cultivation', 0)
-        max_cultivation = player_data.get('max_cultivation', 1000)
-        progress = cultivation / max_cultivation if max_cultivation > 0 else 0
-        progress_percent = progress * 100
-
-        # 格式化数字（如果很大就用K/M/B）
+        # 格式化数字函数
         def format_number(n):
             if n >= 1_000_000_000:
                 return f"{n/1_000_000_000:.1f}B"
@@ -139,94 +172,131 @@ class CardGenerator(ImageGenerator):
             elif n >= 1_000:
                 return f"{n/1_000:.1f}K"
             else:
-                return str(n)
+                return str(int(n))
 
-        cultivation_text = f"修为: {format_number(cultivation)} / {format_number(max_cultivation)} ({progress_percent:.1f}%)"
+        # 绘制角色名称
+        name = player_data.get('name', '未知')
+        y = content_padding
         draw.text(
-            (padding + 20, y),
-            cultivation_text,
-            font=self.get_font(16),
-            fill=self.colors['text_secondary']
+            (text_start_x, y),
+            name,
+            font=self.get_font(48),
+            fill=self.colors['text_accent']
         )
-        y += 25
+        y += 60
 
-        self.draw_progress_bar(
-            draw,
-            (padding + 20, y),
-            width=width - padding * 2 - 40,
-            height=22,
-            progress=progress,
-            fill_color=self.colors['exp_color']
+        # 绘制境界信息
+        realm = player_data.get('realm', '凡人')
+        realm_level = player_data.get('realm_level', 1)
+        realm_level_map = {1: '初期', 2: '中期', 3: '后期', 4: '大圆满'}
+        realm_level_name = realm_level_map.get(realm_level, f'{realm_level}级')
+
+        draw.text(
+            (text_start_x, y),
+            f"{realm} · {realm_level_name}",
+            font=self.get_font(32),
+            fill=self.colors['text_primary']
+        )
+        y += 50
+
+        # 绘制灵根信息
+        spirit_root = player_data.get('spirit_root', '无')
+        spirit_root_quality = player_data.get('spirit_root_quality', '凡品')
+        quality_color = self.get_quality_color(spirit_root_quality)
+
+        draw.text(
+            (content_padding, y),
+            f"{spirit_root}灵根 · {spirit_root_quality}",
+            font=self.get_font(28),
+            fill=quality_color
+        )
+        y += 60
+
+        # 绘制分隔线
+        draw.line(
+            [(content_padding, y), (width - content_padding, y)],
+            fill=self.colors['border_default'],
+            width=2
+        )
+        y += 30
+
+        # 绘制修为进度条
+        cultivation = player_data.get('cultivation', 0)
+        max_cultivation = player_data.get('max_cultivation', 1000)
+        progress = cultivation / max_cultivation if max_cultivation > 0 else 0
+        progress_percent = progress * 100
+
+        draw.text(
+            (content_padding, y),
+            "修为进度",
+            font=self.get_font(24),
+            fill=self.colors['text_secondary']
         )
         y += 35
 
-        # 绘制生命值和法力值（两列显示）
+        # 进度条
+        bar_width = width - content_padding * 2
+        bar_height = 30
+        self.draw_progress_bar(
+            draw,
+            (content_padding, y),
+            width=bar_width,
+            height=bar_height,
+            progress=progress,
+            fill_color=self.colors['exp_color'],
+            radius=8
+        )
+
+        # 在进度条上显示文字
+        progress_text = f"{format_number(cultivation)} / {format_number(max_cultivation)}  ({progress_percent:.1f}%)"
+        draw.text(
+            (width // 2, y + bar_height // 2),
+            progress_text,
+            font=self.get_font(20),
+            fill=(255, 255, 255),
+            anchor='mm'
+        )
+        y += bar_height + 40
+
+        # 属性信息（两列布局）
         hp = player_data.get('hp', 100)
         max_hp = player_data.get('max_hp', 100)
         mp = player_data.get('mp', 100)
         max_mp = player_data.get('max_mp', 100)
-
-        left_x = padding + 20
-        right_x = width // 2 + 20
-
-        # 生命值（左列）
-        hp_text = f"❤️  生命: {format_number(hp)} / {format_number(max_hp)}"
-        draw.text(
-            (left_x, y),
-            hp_text,
-            font=self.get_font(17),
-            fill=self.colors['hp_color']
-        )
-
-        # 法力值（右列）
-        mp_text = f"💙  法力: {format_number(mp)} / {format_number(max_mp)}"
-        draw.text(
-            (right_x, y),
-            mp_text,
-            font=self.get_font(17),
-            fill=self.colors['mp_color']
-        )
-        y += 35
-
-        # 绘制攻击和防御（两列显示）
         attack = player_data.get('attack', 0)
         defense = player_data.get('defense', 0)
 
-        # 攻击力（左列）
-        attack_text = f"⚔️  攻击力: {format_number(attack)}"
+        left_x = content_padding
+        right_x = width // 2 + 20
+        line_height = 45
+
+        # 第一行：生命值和法力值
         draw.text(
             (left_x, y),
-            attack_text,
-            font=self.get_font(17),
-            fill=self.colors['text_primary']
+            f"生命  {format_number(hp)} / {format_number(max_hp)}",
+            font=self.get_font(24),
+            fill=self.colors['hp_color']
         )
-
-        # 防御力（右列）
-        defense_text = f"🛡️  防御力: {format_number(defense)}"
         draw.text(
             (right_x, y),
-            defense_text,
-            font=self.get_font(17),
+            f"法力  {format_number(mp)} / {format_number(max_mp)}",
+            font=self.get_font(24),
+            fill=self.colors['mp_color']
+        )
+        y += line_height
+
+        # 第二行：攻击力和防御力
+        draw.text(
+            (left_x, y),
+            f"攻击力  {format_number(attack)}",
+            font=self.get_font(24),
             fill=self.colors['text_primary']
         )
-        y += 40
-
-        # 绘制装饰性分隔线
-        line_y = height - padding - 25
-        draw.line(
-            [(padding + 20, line_y), (width - padding - 20, line_y)],
-            fill=self.colors['border_default'],
-            width=1
-        )
-
-        # 底部提示文字
-        footer_text = "✨ 修仙之路，道阻且长 ✨"
         draw.text(
-            (width // 2, height - padding - 10),
-            footer_text,
-            font=self.get_font(14),
-            fill=self.colors['text_secondary'],
-            anchor='mt'
+            (right_x, y),
+            f"防御力  {format_number(defense)}",
+            font=self.get_font(24),
+            fill=self.colors['text_primary']
         )
 
         return image

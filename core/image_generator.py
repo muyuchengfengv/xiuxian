@@ -80,21 +80,25 @@ class ImageGenerator:
 
     def _load_fonts(self):
         """加载字体文件"""
-        # 默认字体路径（优先使用支持中文的字体）
+        # 字体搜索路径（优先使用项目内字体）
         font_paths = [
-            # 项目字体目录
+            # 1. 项目字体目录（优先级最高）
+            self.fonts_dir / "NotoSansCJK-Regular.ttc",      # Noto Sans CJK（推荐）
             self.fonts_dir / "SourceHanSansCN-Regular.otf",  # 思源黑体
-            self.fonts_dir / "NotoSansCJK-Regular.ttc",      # Noto Sans CJK
             self.fonts_dir / "SimHei.ttf",                   # 黑体
-            # Linux 系统字体
+
+            # 2. Linux 系统字体
             "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",  # 文泉驿正黑
             "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc", # 文泉驿微米黑
             "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",  # Noto Sans CJK
+            "/usr/share/fonts/truetype/arphic/uming.ttc",    # AR PL UMing
             "/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf",  # Droid Sans Fallback
-            # macOS 系统字体
+
+            # 3. macOS 系统字体
             "/System/Library/Fonts/PingFang.ttc",            # 苹方
             "/System/Library/Fonts/STHeiti Light.ttc",       # 华文黑体
-            # Windows 系统字体
+
+            # 4. Windows 系统字体
             "C:\\Windows\\Fonts\\msyh.ttc",                  # 微软雅黑
             "C:\\Windows\\Fonts\\simhei.ttf",                # 黑体
             "C:\\Windows\\Fonts\\simsun.ttc",                # 宋体
@@ -102,36 +106,51 @@ class ImageGenerator:
 
         self.fonts = {}
         self.font_path_used = None
+        self.font_missing_warning = False
 
         # 尝试加载字体
         for size in [12, 14, 16, 18, 20, 24, 28, 32, 36, 48]:
             font_loaded = False
             for font_path in font_paths:
                 try:
-                    if Path(font_path).exists():
+                    font_path_obj = Path(font_path)
+                    if font_path_obj.exists():
                         self.fonts[size] = ImageFont.truetype(str(font_path), size)
                         if self.font_path_used is None:
-                            self.font_path_used = font_path
-                            print(f"[CardGenerator] 使用字体: {font_path}")
+                            self.font_path_used = str(font_path)
+                            # 判断是否使用了项目内字体
+                            if str(self.fonts_dir) in str(font_path):
+                                print(f"[CardGenerator] ✅ 使用项目字体: {font_path}")
+                            else:
+                                print(f"[CardGenerator] ℹ️  使用系统字体: {font_path}")
                         font_loaded = True
                         break
-                except Exception as e:
+                except Exception:
                     continue
 
             if not font_loaded:
-                # 最后尝试使用 PIL 的默认字体（可能不支持中文）
-                try:
-                    # 尝试使用 DejaVuSans 作为备用
-                    self.fonts[size] = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", size)
-                    if self.font_path_used is None:
-                        self.font_path_used = "DejaVuSans"
-                    font_loaded = True
-                except:
-                    # 实在没有就用默认字体（不支持中文）
-                    self.fonts[size] = ImageFont.load_default()
-                    if self.font_path_used is None:
-                        self.font_path_used = "default (no Chinese support)"
-                        print(f"[CardGenerator] 警告：未找到中文字体，将使用默认字体（可能显示为方块）")
+                # 使用默认字体（不支持中文）
+                self.fonts[size] = ImageFont.load_default()
+                if not self.font_missing_warning:
+                    self.font_missing_warning = True
+                    self.font_path_used = "default (no Chinese support)"
+                    print("\n" + "=" * 70)
+                    print("⚠️  警告：未找到中文字体！")
+                    print("=" * 70)
+                    print("卡片中的中文将显示为方块或乱码。")
+                    print()
+                    print("解决方法：")
+                    print("1. 运行字体下载脚本:")
+                    print(f"   python3 {self.fonts_dir / 'download_fonts.py'}")
+                    print()
+                    print("2. 或手动下载字体:")
+                    print("   访问 https://github.com/googlefonts/noto-cjk/releases")
+                    print(f"   下载后放到: {self.fonts_dir}")
+                    print()
+                    print("3. 或安装系统字体:")
+                    print("   Ubuntu/Debian: sudo apt install fonts-noto-cjk")
+                    print("   CentOS/RHEL:   sudo yum install google-noto-sans-cjk-fonts")
+                    print("=" * 70 + "\n")
 
     def get_font(self, size: int = 16) -> ImageFont.FreeTypeFont:
         """

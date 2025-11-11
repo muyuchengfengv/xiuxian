@@ -438,6 +438,7 @@ class XiuxianPlugin(Star):
                     # 准备卡片数据
                     player_data = {
                         'name': player.name,
+                        'user_id': user_id,  # 用于获取QQ头像
                         'realm': player.realm,
                         'realm_level': player.realm_level,
                         'cultivation': player.cultivation,
