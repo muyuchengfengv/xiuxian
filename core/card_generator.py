@@ -7,13 +7,21 @@ from PIL import Image, ImageDraw
 from pathlib import Path
 from typing import Optional, Dict, Any, List
 from .image_generator import ImageGenerator
+from .background_generator import BackgroundGenerator
+from .image_config import ImageConfig, get_global_config
 
 
 class CardGenerator(ImageGenerator):
     """修仙卡片生成器"""
 
-    def __init__(self, assets_dir: Optional[Path] = None):
+    def __init__(self, assets_dir: Optional[Path] = None, config: Optional[ImageConfig] = None):
         super().__init__(assets_dir)
+
+        # 初始化背景生成器
+        self.bg_generator = BackgroundGenerator(assets_dir)
+
+        # 加载配置
+        self.config = config if config else get_global_config()
 
     def generate_player_card(self, player_data: Dict[str, Any]) -> Image.Image:
         """
@@ -44,8 +52,22 @@ class CardGenerator(ImageGenerator):
         width, height = 600, 400
         padding = 30
 
-        # 创建画布
-        image = Image.new('RGB', (width, height), self.colors['bg_main'])
+        # 生成背景
+        if self.config.get('enable_background', True):
+            theme = self.config.get_theme_for_card('player')
+            direction = self.config.get('gradient_direction', 'radial')
+            add_effects = self.config.get('enable_effects', True)
+
+            image = self.bg_generator.generate_themed_background(
+                width, height, theme, direction, add_effects
+            )
+            # 转换为RGBA以便后续处理
+            if image.mode != 'RGBA':
+                image = image.convert('RGBA')
+        else:
+            # 使用纯色背景
+            image = Image.new('RGBA', (width, height), self.colors['bg_main'])
+
         draw = ImageDraw.Draw(image)
 
         # 绘制卡片背景
@@ -198,8 +220,20 @@ class CardGenerator(ImageGenerator):
         width, height = 500, 300
         padding = 30
 
-        # 创建画布
-        image = Image.new('RGB', (width, height), self.colors['bg_main'])
+        # 生成背景
+        if self.config.get('enable_background', True):
+            theme = self.config.get_theme_for_card('cultivation')
+            direction = self.config.get('gradient_direction', 'radial')
+            add_effects = self.config.get('enable_effects', True)
+
+            image = self.bg_generator.generate_themed_background(
+                width, height, theme, direction, add_effects
+            )
+            if image.mode != 'RGBA':
+                image = image.convert('RGBA')
+        else:
+            image = Image.new('RGBA', (width, height), self.colors['bg_main'])
+
         draw = ImageDraw.Draw(image)
 
         # 绘制卡片背景
@@ -305,8 +339,20 @@ class CardGenerator(ImageGenerator):
         width, height = 450, 350
         padding = 30
 
-        # 创建画布
-        image = Image.new('RGB', (width, height), self.colors['bg_main'])
+        # 生成背景
+        if self.config.get('enable_background', True):
+            theme = self.config.get_theme_for_card('equipment')
+            direction = self.config.get('gradient_direction', 'radial')
+            add_effects = self.config.get('enable_effects', True)
+
+            image = self.bg_generator.generate_themed_background(
+                width, height, theme, direction, add_effects
+            )
+            if image.mode != 'RGBA':
+                image = image.convert('RGBA')
+        else:
+            image = Image.new('RGBA', (width, height), self.colors['bg_main'])
+
         draw = ImageDraw.Draw(image)
 
         # 获取品质颜色
@@ -418,8 +464,20 @@ class CardGenerator(ImageGenerator):
         width, height = 550, 400
         padding = 30
 
-        # 创建画布
-        image = Image.new('RGB', (width, height), self.colors['bg_main'])
+        # 生成背景
+        if self.config.get('enable_background', True):
+            theme = self.config.get_theme_for_card('combat')
+            direction = self.config.get('gradient_direction', 'radial')
+            add_effects = self.config.get('enable_effects', True)
+
+            image = self.bg_generator.generate_themed_background(
+                width, height, theme, direction, add_effects
+            )
+            if image.mode != 'RGBA':
+                image = image.convert('RGBA')
+        else:
+            image = Image.new('RGBA', (width, height), self.colors['bg_main'])
+
         draw = ImageDraw.Draw(image)
 
         # 绘制卡片背景
