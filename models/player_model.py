@@ -7,6 +7,12 @@ from datetime import datetime
 from typing import Optional, Dict, Any
 
 
+def get_cultivation_required(realm: str, level: int) -> int:
+    """获取指定境界和小等级所需的修为（延迟导入避免循环依赖）"""
+    from ..utils.constants import get_cultivation_required as _get_cultivation_required
+    return _get_cultivation_required(realm, level)
+
+
 @dataclass
 class Player:
     """玩家数据模型"""
@@ -161,6 +167,16 @@ class Player:
     def update_timestamp(self):
         """更新时间戳"""
         self.updated_at = datetime.now()
+
+    @property
+    def cultivation_required(self) -> int:
+        """获取当前境界等级所需的修为值"""
+        return get_cultivation_required(self.realm, self.realm_level)
+
+    @property
+    def spirit_root(self) -> Optional[str]:
+        """获取灵根类型（兼容性属性）"""
+        return self.spirit_root_type
 
     def __repr__(self) -> str:
         """字符串表示"""

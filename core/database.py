@@ -50,8 +50,11 @@ class DatabaseManager:
             # 初始化基础地点数据
             await self._seed_initial_locations()
 
-            # 修复现有玩家的属性（如果有突破系统bug导致的属性异常）
-            await self._fix_player_attributes()
+            # [已禁用] 修复现有玩家的属性
+            # 注意：此功能会重新计算玩家属性，但只考虑基础属性、灵根和境界加成
+            # 不包括装备、丹药、功法、buff等其他加成，会导致玩家属性被错误降低
+            # 如果需要修复属性异常，请使用专门的修复工具或命令
+            # await self._fix_player_attributes()
 
             logger.info("数据库初始化完成")
 
@@ -987,7 +990,18 @@ class DatabaseManager:
             pass
 
     async def _fix_player_attributes(self):
-        """修复现有玩家的属性异常问题"""
+        """
+        修复现有玩家的属性异常问题
+
+        ⚠️ 警告：此方法只基于基础属性、灵根和境界来计算属性，
+        不包括装备、丹药、功法、buff等其他加成。
+        因此，使用此方法可能会导致玩家属性被错误降低。
+
+        建议：
+        1. 不要在启动时自动调用此方法
+        2. 仅在确认有属性计算bug需要批量修复时手动调用
+        3. 修复前应该先备份数据库
+        """
         try:
             # 检查是否有玩家数据
             cursor = await self.execute("SELECT COUNT(*) as count FROM players")
@@ -1057,11 +1071,25 @@ class DatabaseManager:
         """
         计算玩家的正确属性值
 
+        ⚠️ 注意：此方法只计算基于以下因素的属性：
+        1. 基础属性（体质、灵力、根骨等）
+        2. 灵根加成
+        3. 境界加成
+
+        不包括以下因素：
+        - 装备加成
+        - 丹药加成
+        - 功法加成
+        - Buff效果
+        - 其他临时或永久加成
+
+        因此，此方法计算出的属性可能低于玩家实际应有的属性。
+
         Args:
             player: 玩家对象
 
         Returns:
-            正确的属性值字典
+            属性值字典（仅包含基础计算结果）
         """
         # 1. 从初始属性开始（玩家创建时的属性）
         initial_attrs = {
