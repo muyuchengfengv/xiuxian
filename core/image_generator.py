@@ -80,6 +80,10 @@ class ImageGenerator:
 
     def _load_fonts(self):
         """加载字体文件"""
+        # 打印调试信息
+        print(f"[FontLoader] 字体目录: {self.fonts_dir}")
+        print(f"[FontLoader] 字体目录是否存在: {self.fonts_dir.exists()}")
+
         # 字体搜索路径（优先使用项目内字体）
         font_paths = [
             # 1. 项目字体目录（优先级最高）
@@ -104,6 +108,19 @@ class ImageGenerator:
             "C:\\Windows\\Fonts\\simsun.ttc",                # 宋体
         ]
 
+        # 检查哪些字体文件存在
+        print("[FontLoader] 检查字体文件...")
+        for i, fp in enumerate(font_paths[:5], 1):  # 只检查前5个
+            exists = Path(fp).exists()
+            status = "✓" if exists else "✗"
+            print(f"  [{status}] {fp}")
+            if exists and i <= 3:  # 项目字体
+                try:
+                    size = Path(fp).stat().st_size / (1024 * 1024)
+                    print(f"      大小: {size:.1f} MB")
+                except:
+                    pass
+
         self.fonts = {}
         self.font_path_used = None
         self.font_missing_warning = False
@@ -115,40 +132,40 @@ class ImageGenerator:
                 try:
                     font_path_obj = Path(font_path)
                     if font_path_obj.exists():
-                        self.fonts[size] = ImageFont.truetype(str(font_path), size)
+                        # 尝试加载字体
+                        self.fonts[size] = ImageFont.truetype(str(font_path_obj.absolute()), size)
+
                         if self.font_path_used is None:
-                            self.font_path_used = str(font_path)
+                            self.font_path_used = str(font_path_obj.absolute())
                             # 判断是否使用了项目内字体
                             if str(self.fonts_dir) in str(font_path):
-                                print(f"[CardGenerator] ✅ 使用项目字体: {font_path}")
+                                print(f"\n[FontLoader] ✅ 成功加载项目字体!")
+                                print(f"             路径: {font_path_obj.absolute()}")
                             else:
-                                print(f"[CardGenerator] ℹ️  使用系统字体: {font_path}")
+                                print(f"\n[FontLoader] ℹ️  使用系统字体: {font_path_obj.absolute()}")
                         font_loaded = True
                         break
-                except Exception:
+                except Exception as e:
+                    if self.font_path_used is None:  # 只在第一次打印错误
+                        print(f"  [!] 加载失败: {font_path} - {e}")
                     continue
 
             if not font_loaded:
                 # 使用PIL默认字体（不支持中文，但至少能显示）
-                try:
-                    # 尝试使用一个基础的等宽字体
-                    self.fonts[size] = ImageFont.load_default()
-                except:
-                    # 如果连默认字体都加载失败，创建一个最基础的字体
-                    self.fonts[size] = ImageFont.load_default()
+                self.fonts[size] = ImageFont.load_default()
 
                 if not self.font_missing_warning:
                     self.font_missing_warning = True
                     self.font_path_used = "PIL默认字体（不支持中文）"
                     print("\n" + "!" * 70)
-                    print("⚠️  警告：未找到中文字体，使用PIL默认字体")
+                    print("⚠️  警告：未找到任何中文字体！")
                     print("!" * 70)
-                    print("中文可能显示为方块或无法显示。")
+                    print(f"字体目录: {self.fonts_dir}")
+                    print("中文将显示为方块。")
                     print()
-                    print("建议：运行字体下载脚本")
-                    print(f"  python3 {self.fonts_dir / 'download_fonts.py'}")
-                    print("或安装系统字体:")
-                    print("  sudo apt install fonts-noto-cjk")
+                    print("解决方法:")
+                    print(f"1. 运行: python3 {self.fonts_dir / 'download_fonts.py'}")
+                    print("2. 或安装系统字体: sudo apt install fonts-noto-cjk")
                     print("!" * 70 + "\n")
 
     def get_font(self, size: int = 16) -> ImageFont.FreeTypeFont:
