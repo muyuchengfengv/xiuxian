@@ -929,8 +929,8 @@ class MarketSystem:
         if listing['status'] != 'active':
             raise ListingNotFoundError("该商品已售出或已下架")
 
-        # 检查是否购买自己的商品
-        if listing['seller_id'] == buyer_id:
+        # 检查是否购买自己的商品（NPC商品除外）
+        if listing['seller_id'] == buyer_id and listing['seller_id'] != 'npc':
             raise ValueError("不能购买自己上架的商品")
 
         # 获取买家和卖家信息
@@ -997,10 +997,14 @@ class MarketSystem:
                 )
 
             # 更新商品状态
-            await self.db.execute(
-                "UPDATE market_items SET status = 'sold', sold_at = ? WHERE id = ?",
-                (datetime.now().isoformat(), listing_id)
-            )
+            # 对于NPC物品，不做任何修改（无限供应，可重复购买）
+            # 对于玩家物品，标记为已售出
+            if listing['seller_id'] != 'npc':
+                # 玩家物品：标记为已售出
+                await self.db.execute(
+                    "UPDATE market_items SET status = 'sold', sold_at = ? WHERE id = ?",
+                    (datetime.now().isoformat(), listing_id)
+                )
 
             # 记录交易历史
             transaction_id = str(uuid.uuid4())
