@@ -422,7 +422,154 @@ class WorldManager:
 
         lines.extend([
             "💡 使用 /地点 查看可到达的地点",
-            "💡 使用 /地点详情 [地点名] 查看详细信息"
+            "💡 使用 /地点详情 [地点名] 查看详细信息",
+            "💡 使用 /路线图 查看完整的地点连接网络",
+            "💡 使用 /寻路 [目标地点] 查找前往路线"
+        ])
+
+        return "\n".join(lines)
+
+    async def find_path(self, start_location_id: int, end_location_id: int) -> Optional[List[Location]]:
+        """
+        使用BFS查找两个地点之间的最短路径
+
+        Args:
+            start_location_id: 起始地点ID
+            end_location_id: 目标地点ID
+
+        Returns:
+            路径中的Location对象列表，如果无法到达则返回None
+        """
+        if start_location_id == end_location_id:
+            start_loc = await self.get_location(start_location_id)
+            return [start_loc] if start_loc else None
+
+        # BFS查找最短路径
+        from collections import deque
+
+        queue = deque([(start_location_id, [start_location_id])])
+        visited = {start_location_id}
+
+        while queue:
+            current_id, path = queue.popleft()
+            current_loc = await self.get_location(current_id)
+
+            if not current_loc:
+                continue
+
+            # 获取相连的地点
+            connected = await self.get_connected_locations(current_loc)
+
+            for next_loc in connected:
+                if next_loc.id == end_location_id:
+                    # 找到目标，返回完整路径
+                    full_path = path + [next_loc.id]
+                    result = []
+                    for loc_id in full_path:
+                        loc = await self.get_location(loc_id)
+                        if loc:
+                            result.append(loc)
+                    return result
+
+                if next_loc.id not in visited:
+                    visited.add(next_loc.id)
+                    queue.append((next_loc.id, path + [next_loc.id]))
+
+        return None
+
+    async def format_route_map(self, user_id: str) -> str:
+        """
+        格式化路线图显示，展示地点之间的连接关系
+
+        Returns:
+            路线图的文本表示
+        """
+        current_loc, _ = await self.get_player_location(user_id)
+        all_locations = await self.get_all_locations()
+
+        lines = [
+            "🗺️ 修仙世界路线图",
+            "─" * 40,
+            "",
+            f"📍 当前位置: {current_loc.name}",
+            "",
+            "地点连接网络:",
+            ""
+        ]
+
+        # 为每个地点显示连接关系
+        for loc in all_locations:
+            connected = await self.get_connected_locations(loc)
+            connected_names = [f"{c.name}({c.id})" for c in connected]
+
+            current_marker = "👈" if loc.id == current_loc.id else "  "
+            lines.append(f"{current_marker} [{loc.id}] {loc.name} (危险{loc.danger_level})")
+
+            if connected_names:
+                lines.append(f"    └─ 可前往: {' → '.join(connected_names)}")
+            else:
+                lines.append(f"    └─ (无连接)")
+            lines.append("")
+
+        lines.extend([
+            "─" * 40,
+            "💡 使用 /前往 [编号] 前往目标地点",
+            "💡 使用 /寻路 [目标地点] 查找前往路线"
+        ])
+
+        return "\n".join(lines)
+
+    async def format_pathfinding(self, user_id: str, destination_name: str) -> str:
+        """
+        格式化寻路结果显示
+
+        Args:
+            user_id: 用户ID
+            destination_name: 目标地点名称
+
+        Returns:
+            寻路结果的文本表示
+        """
+        current_loc, _ = await self.get_player_location(user_id)
+        destination = await self.get_location_by_name(destination_name)
+
+        if not destination:
+            return f"❌ 未找到名为 '{destination_name}' 的地点"
+
+        if current_loc.id == destination.id:
+            return f"📍 你已经在 {destination.name} 了"
+
+        # 查找路径
+        path = await self.find_path(current_loc.id, destination.id)
+
+        if not path:
+            return f"❌ 无法从 {current_loc.name} 到达 {destination.name}"
+
+        lines = [
+            f"🧭 寻路: {current_loc.name} → {destination.name}",
+            "─" * 40,
+            "",
+            f"📍 起点: {current_loc.name}",
+            f"🎯 终点: {destination.name}",
+            f"📏 路径长度: {len(path) - 1} 步",
+            "",
+            "推荐路线:",
+            ""
+        ]
+
+        # 显示路径
+        for i, loc in enumerate(path):
+            if i == 0:
+                lines.append(f"  {i+1}. 📍 {loc.name} (当前位置)")
+            elif i == len(path) - 1:
+                lines.append(f"  {i+1}. 🎯 {loc.name} (目的地)")
+            else:
+                lines.append(f"  {i+1}. ➡️  {loc.name}")
+
+        lines.extend([
+            "",
+            "─" * 40,
+            f"💡 使用 /前往 {path[1].id} 开始前往 {path[1].name}"
         ])
 
         return "\n".join(lines)

@@ -75,7 +75,7 @@ class DatabaseManager:
             "tribulations", "profession_exams", "locations", "player_locations",
             "cultivation_methods", "player_cultivation_methods", "method_skills",
             "market_items", "market_transactions",
-            "pets", "player_pets", "pet_secret_realms"
+            "pets", "player_pets", "pet_secret_realms", "spirit_veins"
         ]
         
         for table in tables_to_backup:
@@ -103,7 +103,7 @@ class DatabaseManager:
             "tribulations", "profession_exams", "locations", "player_locations",
             "cultivation_methods", "player_cultivation_methods", "method_skills",
             "market_items", "market_transactions",
-            "pets", "player_pets", "pet_secret_realms"
+            "pets", "player_pets", "pet_secret_realms", "spirit_veins"
         ]
         
         for table in tables_to_restore:
@@ -679,6 +679,20 @@ class DatabaseManager:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             """)
 
+            # 灵脉表
+            await self._ensure_table_exists("spirit_veins", """
+                id INTEGER PRIMARY KEY,
+                name TEXT NOT NULL,
+                level INTEGER NOT NULL,
+                location TEXT NOT NULL,
+                base_income INTEGER NOT NULL,
+                owner_id TEXT,
+                owner_name TEXT,
+                occupied_at TIMESTAMP,
+                last_collect_at TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            """)
+
             # 探索故事历史表
             await self._ensure_table_exists("exploration_stories", """
                 id TEXT PRIMARY KEY,
@@ -783,6 +797,8 @@ class DatabaseManager:
             "CREATE INDEX IF NOT EXISTS idx_player_pets_user ON player_pets(user_id)",
             "CREATE INDEX IF NOT EXISTS idx_player_pets_active ON player_pets(user_id, is_active)",
             "CREATE INDEX IF NOT EXISTS idx_pet_secret_realms_user ON pet_secret_realms(user_id)",
+            "CREATE INDEX IF NOT EXISTS idx_spirit_veins_owner ON spirit_veins(owner_id)",
+            "CREATE INDEX IF NOT EXISTS idx_spirit_veins_level ON spirit_veins(level)",
             "CREATE INDEX IF NOT EXISTS idx_locations_region ON locations(region_type)",
             "CREATE INDEX IF NOT EXISTS idx_locations_danger ON locations(danger_level)",
             "CREATE INDEX IF NOT EXISTS idx_player_locations_user ON player_locations(user_id)",
@@ -909,7 +925,7 @@ class DatabaseManager:
                     'coordinates_x': 40,
                     'coordinates_y': -20,
                     'is_safe_zone': 0,
-                    'connected_locations': '[4]'
+                    'connected_locations': '[4,8]'
                 },
                 {
                     'name': '烈焰山',
@@ -921,7 +937,7 @@ class DatabaseManager:
                     'coordinates_x': 60,
                     'coordinates_y': 60,
                     'is_safe_zone': 0,
-                    'connected_locations': '[5,10]'
+                    'connected_locations': '[5,7,10]'
                 },
                 {
                     'name': '迷雾沼泽',
@@ -933,7 +949,7 @@ class DatabaseManager:
                     'coordinates_x': -50,
                     'coordinates_y': 50,
                     'is_safe_zone': 0,
-                    'connected_locations': '[6]'
+                    'connected_locations': '[6,10]'
                 },
                 {
                     'name': '虚空裂隙',
@@ -945,7 +961,7 @@ class DatabaseManager:
                     'coordinates_x': 100,
                     'coordinates_y': 100,
                     'is_safe_zone': 0,
-                    'connected_locations': '[8]'
+                    'connected_locations': '[8,9]'
                 }
             ]
 

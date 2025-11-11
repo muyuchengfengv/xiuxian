@@ -37,6 +37,9 @@ from .core.market import MarketSystem, MarketError, ItemNotOwnedError, ItemNotTr
 # 导入灵宠系统模块
 from .core.pet import PetSystem, PetError, PetNotFoundError, AlreadyHasPetError
 
+# 导入灵脉系统模块
+from .core.spirit_vein import SpiritVeinSystem, SpiritVeinError
+
 # 导入工具类
 from .utils import (
     MessageFormatter,
@@ -107,6 +110,9 @@ class XiuxianPlugin(Star):
 
         # 灵宠系统管理器
         self.pet_sys = None
+
+        # 灵脉系统管理器
+        self.spirit_vein_sys = None
 
         # 图片生成器
         self.card_generator = None
@@ -221,6 +227,12 @@ class XiuxianPlugin(Star):
             await self.pet_sys.init_pet_templates()
             logger.info("✓ 灵宠系统初始化完成")
 
+            # 初始化灵脉系统
+            logger.info("💎 正在初始化灵脉系统...")
+            self.spirit_vein_sys = SpiritVeinSystem(self.db, self.player_mgr)
+            await self.spirit_vein_sys.init_spirit_veins()
+            logger.info("✓ 灵脉系统初始化完成")
+
             # 注入天劫系统到突破系统
             self.breakthrough_sys.set_tribulation_system(self.tribulation_sys)
 
@@ -252,6 +264,9 @@ class XiuxianPlugin(Star):
 
             # 注入宗门系统到灵宠系统（用于宗门检查）
             self.pet_sys.set_sect_system(self.sect_sys)
+
+            # 注入战斗系统到灵脉系统（用于挑战战斗）
+            self.spirit_vein_sys.set_combat_system(self.combat_sys)
 
             logger.info("✓ 系统连接完成")
 
@@ -3676,6 +3691,58 @@ class XiuxianPlugin(Star):
             logger.error(f"查看地图失败: {e}", exc_info=True)
             yield event.plain_result(f"查看地图失败：{str(e)}")
 
+    @filter.command("路线图", alias={"routes", "路线", "连接图"})
+    async def route_map_cmd(self, event: AstrMessageEvent):
+        """查看完整的地点连接网络"""
+        user_id = event.get_sender_id()
+
+        try:
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
+            formatted = await self.world_mgr.format_route_map(user_id)
+            yield event.plain_result(formatted)
+
+        except PlayerNotFoundError:
+            yield event.plain_result("您还没有创建角色，请先使用 /修仙 创建角色")
+        except Exception as e:
+            logger.error(f"查看路线图失败: {e}", exc_info=True)
+            yield event.plain_result(f"查看路线图失败：{str(e)}")
+
+    @filter.command("寻路", alias={"findpath", "路径", "导航"})
+    async def pathfinding_cmd(self, event: AstrMessageEvent):
+        """查找前往指定地点的路线"""
+        user_id = event.get_sender_id()
+        message_text = self._get_message_text(event)
+
+        try:
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
+            # 解析目标地点
+            parts = message_text.split()
+            if len(parts) < 2:
+                yield event.plain_result(
+                    "🧭 寻找前往地点的路线\n\n"
+                    "请指定要前往的目标地点名称\n\n"
+                    "💡 使用方法: /寻路 [地点名]\n"
+                    "💡 例如: /寻路 天元城\n\n"
+                    "💡 使用 /地图 查看所有地点"
+                )
+                return
+
+            destination_name = " ".join(parts[1:])
+            formatted = await self.world_mgr.format_pathfinding(user_id, destination_name)
+            yield event.plain_result(formatted)
+
+        except PlayerNotFoundError:
+            yield event.plain_result("您还没有创建角色，请先使用 /修仙 创建角色")
+        except Exception as e:
+            logger.error(f"寻路失败: {e}", exc_info=True)
+            yield event.plain_result(f"寻路失败：{str(e)}")
+
     @filter.command("前往", alias={"move", "go", "移动"})
     async def move_cmd(self, event: AstrMessageEvent):
         """前往指定地点"""
@@ -4627,7 +4694,7 @@ class XiuxianPlugin(Star):
 战斗: /切磋@用户 /战力 /挑战[等级] /使用技能[技能名]
 装备: /储物袋 /装备[#] /卸下[槽位] /强化[#] /获得装备[类型]
 技能: /技能 /使用技能[技能名]
-世界: /地点 /地图 /前往[#] /探索 /地点详情 /结束探索
+世界: /地点 /地图 /路线图 /前往[#] /寻路[地点] /探索 /地点详情 /结束探索
 组队: /组队探索[@用户] /查看邀请 /接受邀请[#] /拒绝邀请[#] /查看队伍 /开始探索 /离开队伍
 职业: /学习职业[类型] /我的职业
 炼丹: /丹方列表 /炼丹[#]
@@ -4641,6 +4708,7 @@ class XiuxianPlugin(Star):
 养成: /喂养灵宠[#] /训练灵宠[#] /升级灵宠[#] /进化灵宠[#]
 天劫: /渡劫 /天劫信息 /天劫历史 /天劫统计
 功法: /功法 /功法装备[#][槽] /已装备功法 /功法详情[#] /获得功法[类型]
+灵脉: /灵脉列表 /占领灵脉[#] /挑战灵脉[#] /收取灵脉 /我的灵脉 /放弃灵脉[#]
 AI: /AI生成[类型] /AI历史 /AI帮助
 详细:/功法帮助 /宗门帮助 /AI帮助""".strip()
         yield event.plain_result(help_text)
@@ -5983,3 +6051,219 @@ AI: /AI生成[类型] /AI历史 /AI帮助
         except Exception as e:
             logger.error(f"进化灵宠失败: {e}", exc_info=True)
             yield event.plain_result(f"进化失败：{str(e)}")
+
+    # ========== 灵脉系统命令 ==========
+
+    @filter.command("灵脉列表", alias={"spirit_veins", "灵脉", "查看灵脉"})
+    async def spirit_vein_list_cmd(self, event: AstrMessageEvent):
+        """查看所有灵脉"""
+        try:
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
+            # 解析参数（可选的等级过滤）
+            text = self._get_message_text(event)
+            args = text.split()
+
+            level_filter = None
+            if len(args) > 1:
+                try:
+                    level_filter = int(args[1])
+                    if level_filter not in [1, 2, 3, 4, 5]:
+                        yield event.plain_result("❌ 灵脉等级必须在1-5之间！")
+                        return
+                except ValueError:
+                    yield event.plain_result("❌ 灵脉等级必须是数字！")
+                    return
+
+            # 获取灵脉列表
+            result = await self.spirit_vein_sys.format_vein_list(level_filter)
+            yield event.plain_result(result)
+
+        except Exception as e:
+            logger.error(f"查看灵脉列表失败: {e}", exc_info=True)
+            yield event.plain_result(f"查看失败：{str(e)}")
+
+    @filter.command("占领灵脉", alias={"occupy_vein", "占领"})
+    async def occupy_vein_cmd(self, event: AstrMessageEvent):
+        """占领无主灵脉"""
+        user_id = event.get_sender_id()
+        try:
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
+            text = self._get_message_text(event)
+            args = text.split()
+
+            if len(args) < 2:
+                yield event.plain_result(
+                    "💎 占领灵脉\n" + "─" * 40 + "\n\n"
+                    "请指定要占领的灵脉编号\n\n"
+                    "💡 使用方法: /占领灵脉 [编号]\n"
+                    "💡 例如: /占领灵脉 1\n\n"
+                    "💡 使用 /灵脉列表 查看所有灵脉"
+                )
+                return
+
+            try:
+                vein_id = int(args[1])
+            except ValueError:
+                yield event.plain_result("❌ 灵脉编号必须是数字！")
+                return
+
+            # 占领灵脉
+            result = await self.spirit_vein_sys.occupy_vein(user_id, vein_id)
+            yield event.plain_result(result['message'])
+
+        except PlayerNotFoundError:
+            yield event.plain_result("您还没有创建角色，请先使用 /修仙 创建角色")
+        except SpiritVeinError as e:
+            yield event.plain_result(f"⚠️ {str(e)}")
+        except Exception as e:
+            logger.error(f"占领灵脉失败: {e}", exc_info=True)
+            yield event.plain_result(f"占领失败：{str(e)}")
+
+    @filter.command("挑战灵脉", alias={"challenge_vein", "挑战"})
+    async def challenge_vein_cmd(self, event: AstrMessageEvent):
+        """挑战灵脉占领者"""
+        user_id = event.get_sender_id()
+        try:
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
+            text = self._get_message_text(event)
+            args = text.split()
+
+            if len(args) < 2:
+                yield event.plain_result(
+                    "⚔️ 挑战灵脉\n" + "─" * 40 + "\n\n"
+                    "请指定要挑战的灵脉编号\n\n"
+                    "💡 使用方法: /挑战灵脉 [编号]\n"
+                    "💡 例如: /挑战灵脉 1\n\n"
+                    "💡 使用 /灵脉列表 查看所有灵脉"
+                )
+                return
+
+            try:
+                vein_id = int(args[1])
+            except ValueError:
+                yield event.plain_result("❌ 灵脉编号必须是数字！")
+                return
+
+            # 挑战灵脉
+            result = await self.spirit_vein_sys.challenge_vein(user_id, vein_id)
+            yield event.plain_result(result['message'])
+
+        except PlayerNotFoundError:
+            yield event.plain_result("您还没有创建角色，请先使用 /修仙 创建角色")
+        except SpiritVeinError as e:
+            yield event.plain_result(f"⚠️ {str(e)}")
+        except Exception as e:
+            logger.error(f"挑战灵脉失败: {e}", exc_info=True)
+            yield event.plain_result(f"挑战失败：{str(e)}")
+
+    @filter.command("收取灵脉", alias={"collect_vein", "收取"})
+    async def collect_vein_cmd(self, event: AstrMessageEvent):
+        """收取灵脉收益"""
+        user_id = event.get_sender_id()
+        try:
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
+            # 收取所有灵脉的收益
+            result = await self.spirit_vein_sys.collect_income(user_id)
+
+            if result['success']:
+                lines = [
+                    "💰 收取灵脉收益",
+                    "─" * 40,
+                    ""
+                ]
+
+                for detail in result['vein_details']:
+                    lines.append(
+                        f"🌟 {detail['name']} ({detail['level']}级)\n"
+                        f"   时长: {detail['hours']:.1f} 小时\n"
+                        f"   收益: {detail['income']} 灵石"
+                    )
+
+                lines.extend([
+                    "",
+                    f"总计获得: {result['total_income']} 灵石！"
+                ])
+
+                yield event.plain_result("\n".join(lines))
+            else:
+                yield event.plain_result(result['message'])
+
+        except PlayerNotFoundError:
+            yield event.plain_result("您还没有创建角色，请先使用 /修仙 创建角色")
+        except SpiritVeinError as e:
+            yield event.plain_result(f"⚠️ {str(e)}")
+        except Exception as e:
+            logger.error(f"收取灵脉收益失败: {e}", exc_info=True)
+            yield event.plain_result(f"收取失败：{str(e)}")
+
+    @filter.command("我的灵脉", alias={"my_veins", "查看我的灵脉"})
+    async def my_veins_cmd(self, event: AstrMessageEvent):
+        """查看自己占领的灵脉"""
+        user_id = event.get_sender_id()
+        try:
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
+            # 获取玩家的灵脉列表
+            result = await self.spirit_vein_sys.format_player_veins(user_id)
+            yield event.plain_result(result)
+
+        except PlayerNotFoundError:
+            yield event.plain_result("您还没有创建角色，请先使用 /修仙 创建角色")
+        except Exception as e:
+            logger.error(f"查看我的灵脉失败: {e}", exc_info=True)
+            yield event.plain_result(f"查看失败：{str(e)}")
+
+    @filter.command("放弃灵脉", alias={"abandon_vein", "放弃"})
+    async def abandon_vein_cmd(self, event: AstrMessageEvent):
+        """放弃灵脉"""
+        user_id = event.get_sender_id()
+        try:
+            if not self._check_initialized():
+                yield event.plain_result("⚠️ 修仙世界正在初始化，请稍后再试...")
+                return
+
+            text = self._get_message_text(event)
+            args = text.split()
+
+            if len(args) < 2:
+                yield event.plain_result(
+                    "⚠️ 放弃灵脉\n" + "─" * 40 + "\n\n"
+                    "请指定要放弃的灵脉编号\n\n"
+                    "💡 使用方法: /放弃灵脉 [编号]\n"
+                    "💡 例如: /放弃灵脉 1\n\n"
+                    "💡 使用 /我的灵脉 查看占领的灵脉\n"
+                    "⚠️ 注意：放弃灵脉将损失未收取的收益！"
+                )
+                return
+
+            try:
+                vein_id = int(args[1])
+            except ValueError:
+                yield event.plain_result("❌ 灵脉编号必须是数字！")
+                return
+
+            # 放弃灵脉
+            result = await self.spirit_vein_sys.abandon_vein(user_id, vein_id)
+            yield event.plain_result(result['message'])
+
+        except PlayerNotFoundError:
+            yield event.plain_result("您还没有创建角色，请先使用 /修仙 创建角色")
+        except SpiritVeinError as e:
+            yield event.plain_result(f"⚠️ {str(e)}")
+        except Exception as e:
+            logger.error(f"放弃灵脉失败: {e}", exc_info=True)
+            yield event.plain_result(f"放弃失败：{str(e)}")
