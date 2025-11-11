@@ -102,9 +102,9 @@ class CardGenerator(ImageGenerator):
             PIL Image对象
         """
         # 卡片尺寸 - 增大并调整比例，让内容更大
-        width, height = 800, 600
-        padding = 40
-        content_padding = 50  # 内容区域内边距
+        width, height = 1000, 700
+        padding = 50
+        content_padding = 60  # 内容区域内边距
 
         # 创建简洁的渐变背景
         image = Image.new('RGBA', (width, height), self.colors['bg_main'])
@@ -133,7 +133,7 @@ class CardGenerator(ImageGenerator):
         draw = ImageDraw.Draw(image)
 
         # 获取QQ头像
-        avatar_size = 100
+        avatar_size = 120
         user_id = player_data.get('user_id', '')
         avatar = None
         if user_id:
@@ -174,18 +174,18 @@ class CardGenerator(ImageGenerator):
             else:
                 return str(int(n))
 
-        # 绘制角色名称
+        # 绘制角色名称 - 大幅增大字体
         name = player_data.get('name', '未知')
         y = content_padding
         draw.text(
             (text_start_x, y),
             name,
-            font=self.get_font(48),
+            font=self.get_font(64),  # 48 -> 64
             fill=self.colors['text_accent']
         )
-        y += 60
+        y += 80
 
-        # 绘制境界信息
+        # 绘制境界信息 - 大幅增大字体
         realm = player_data.get('realm', '凡人')
         realm_level = player_data.get('realm_level', 1)
         realm_level_map = {1: '初期', 2: '中期', 3: '后期', 4: '大圆满'}
@@ -194,12 +194,12 @@ class CardGenerator(ImageGenerator):
         draw.text(
             (text_start_x, y),
             f"{realm} · {realm_level_name}",
-            font=self.get_font(32),
+            font=self.get_font(40),  # 32 -> 40
             fill=self.colors['text_primary']
         )
-        y += 50
+        y += 60
 
-        # 绘制灵根信息
+        # 绘制灵根信息 - 大幅增大字体
         spirit_root = player_data.get('spirit_root', '无')
         spirit_root_quality = player_data.get('spirit_root_quality', '凡品')
         quality_color = self.get_quality_color(spirit_root_quality)
@@ -207,10 +207,10 @@ class CardGenerator(ImageGenerator):
         draw.text(
             (content_padding, y),
             f"{spirit_root}灵根 · {spirit_root_quality}",
-            font=self.get_font(28),
+            font=self.get_font(36),  # 28 -> 36
             fill=quality_color
         )
-        y += 60
+        y += 70
 
         # 绘制分隔线
         draw.line(
@@ -220,7 +220,7 @@ class CardGenerator(ImageGenerator):
         )
         y += 30
 
-        # 绘制修为进度条
+        # 绘制修为进度条 - 增大字体
         cultivation = player_data.get('cultivation', 0)
         max_cultivation = player_data.get('max_cultivation', 1000)
         progress = cultivation / max_cultivation if max_cultivation > 0 else 0
@@ -229,14 +229,14 @@ class CardGenerator(ImageGenerator):
         draw.text(
             (content_padding, y),
             "修为进度",
-            font=self.get_font(24),
+            font=self.get_font(32),  # 24 -> 32
             fill=self.colors['text_secondary']
         )
-        y += 35
+        y += 45
 
-        # 进度条
+        # 进度条 - 增大高度
         bar_width = width - content_padding * 2
-        bar_height = 30
+        bar_height = 40  # 30 -> 40
         self.draw_progress_bar(
             draw,
             (content_padding, y),
@@ -244,21 +244,21 @@ class CardGenerator(ImageGenerator):
             height=bar_height,
             progress=progress,
             fill_color=self.colors['exp_color'],
-            radius=8
+            radius=10
         )
 
-        # 在进度条上显示文字
+        # 在进度条上显示文字 - 增大字体
         progress_text = f"{format_number(cultivation)} / {format_number(max_cultivation)}  ({progress_percent:.1f}%)"
         draw.text(
             (width // 2, y + bar_height // 2),
             progress_text,
-            font=self.get_font(20),
+            font=self.get_font(28),  # 20 -> 28
             fill=(255, 255, 255),
             anchor='mm'
         )
-        y += bar_height + 40
+        y += bar_height + 50
 
-        # 属性信息（两列布局）
+        # 属性信息（两列布局）- 大幅增大字体
         hp = player_data.get('hp', 100)
         max_hp = player_data.get('max_hp', 100)
         mp = player_data.get('mp', 100)
@@ -267,20 +267,20 @@ class CardGenerator(ImageGenerator):
         defense = player_data.get('defense', 0)
 
         left_x = content_padding
-        right_x = width // 2 + 20
-        line_height = 45
+        right_x = width // 2 + 30
+        line_height = 55  # 45 -> 55
 
         # 第一行：生命值和法力值
         draw.text(
             (left_x, y),
             f"生命  {format_number(hp)} / {format_number(max_hp)}",
-            font=self.get_font(24),
+            font=self.get_font(32),  # 24 -> 32
             fill=self.colors['hp_color']
         )
         draw.text(
             (right_x, y),
             f"法力  {format_number(mp)} / {format_number(max_mp)}",
-            font=self.get_font(24),
+            font=self.get_font(32),  # 24 -> 32
             fill=self.colors['mp_color']
         )
         y += line_height
@@ -289,13 +289,13 @@ class CardGenerator(ImageGenerator):
         draw.text(
             (left_x, y),
             f"攻击力  {format_number(attack)}",
-            font=self.get_font(24),
+            font=self.get_font(32),  # 24 -> 32
             fill=self.colors['text_primary']
         )
         draw.text(
             (right_x, y),
             f"防御力  {format_number(defense)}",
-            font=self.get_font(24),
+            font=self.get_font(32),  # 24 -> 32
             fill=self.colors['text_primary']
         )
 

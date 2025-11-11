@@ -108,8 +108,8 @@ class ImageGenerator:
         self.font_path_used = None
         self.font_missing_warning = False
 
-        # 尝试加载字体
-        for size in [12, 14, 16, 18, 20, 24, 28, 32, 36, 48]:
+        # 尝试加载字体 - 增加更大的字体尺寸
+        for size in [12, 14, 16, 18, 20, 24, 28, 32, 36, 40, 48, 56, 64, 72, 80]:
             font_loaded = False
             for font_path in font_paths:
                 try:
@@ -129,28 +129,27 @@ class ImageGenerator:
                     continue
 
             if not font_loaded:
-                # 使用默认字体（不支持中文）
-                self.fonts[size] = ImageFont.load_default()
+                # 使用PIL默认字体（不支持中文，但至少能显示）
+                try:
+                    # 尝试使用一个基础的等宽字体
+                    self.fonts[size] = ImageFont.load_default()
+                except:
+                    # 如果连默认字体都加载失败，创建一个最基础的字体
+                    self.fonts[size] = ImageFont.load_default()
+
                 if not self.font_missing_warning:
                     self.font_missing_warning = True
-                    self.font_path_used = "default (no Chinese support)"
-                    print("\n" + "=" * 70)
-                    print("⚠️  警告：未找到中文字体！")
-                    print("=" * 70)
-                    print("卡片中的中文将显示为方块或乱码。")
+                    self.font_path_used = "PIL默认字体（不支持中文）"
+                    print("\n" + "!" * 70)
+                    print("⚠️  警告：未找到中文字体，使用PIL默认字体")
+                    print("!" * 70)
+                    print("中文可能显示为方块或无法显示。")
                     print()
-                    print("解决方法：")
-                    print("1. 运行字体下载脚本:")
-                    print(f"   python3 {self.fonts_dir / 'download_fonts.py'}")
-                    print()
-                    print("2. 或手动下载字体:")
-                    print("   访问 https://github.com/googlefonts/noto-cjk/releases")
-                    print(f"   下载后放到: {self.fonts_dir}")
-                    print()
-                    print("3. 或安装系统字体:")
-                    print("   Ubuntu/Debian: sudo apt install fonts-noto-cjk")
-                    print("   CentOS/RHEL:   sudo yum install google-noto-sans-cjk-fonts")
-                    print("=" * 70 + "\n")
+                    print("建议：运行字体下载脚本")
+                    print(f"  python3 {self.fonts_dir / 'download_fonts.py'}")
+                    print("或安装系统字体:")
+                    print("  sudo apt install fonts-noto-cjk")
+                    print("!" * 70 + "\n")
 
     def get_font(self, size: int = 16) -> ImageFont.FreeTypeFont:
         """
